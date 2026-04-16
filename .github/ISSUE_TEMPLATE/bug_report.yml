@@ -1,0 +1,74 @@
+name: Bug report
+description: Report a bug with opencode-voice
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time to report a bug.
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version
+      description: "Run: npm list @renjfk/opencode-voice"
+      placeholder: "0.1.2"
+    validations:
+      required: true
+
+  - type: input
+    id: opencode-version
+    attributes:
+      label: OpenCode version
+      description: "Shown in the bottom bar of the TUI"
+      placeholder: "1.4.6"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS (Apple Silicon)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: feature
+    attributes:
+      label: Affected feature
+      options:
+        - Speech-to-text (STT)
+        - Text-to-speech (TTS)
+        - LLM normalization
+        - Plugin loading
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the bug and what you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce this?
+      placeholder: |
+        1. Open OpenCode
+        2. Run /stt-record
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: Paste any relevant logs from ~/.local/share/opencode/log/
+      render: shell
