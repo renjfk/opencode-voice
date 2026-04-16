@@ -24,6 +24,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   prepare:
@@ -86,8 +87,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
+
+      - run: npm install
 
       - name: Set package version
         run: npm version "${{ needs.prepare.outputs.version }}" --no-git-tag-version
@@ -96,9 +99,7 @@ jobs:
         run: npm pack --dry-run
 
       - name: Publish to npm
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
 
       - name: Download release notes
         uses: actions/download-artifact@v4
