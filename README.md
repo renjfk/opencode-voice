@@ -14,10 +14,11 @@ code-heavy responses, etc.).
 
 ## Install
 
-Add to your `opencode.json`:
+Add to your `tui.json` (create at `~/.config/opencode/tui.json` if it doesn't exist):
 
 ```json
 {
+  "$schema": "https://opencode.ai/tui.json",
   "plugin": ["@renjfk/opencode-voice"]
 }
 ```
