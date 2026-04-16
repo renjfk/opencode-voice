@@ -16,7 +16,7 @@ This document describes the step-by-step manual release process for opencode-voi
 - [opencode](https://opencode.ai/) installed
 - [GitHub CLI (`gh`)](https://cli.github.com) installed and authenticated (`gh auth login`)
 - Understanding of conventional commit patterns
-- `NPM_TOKEN` secret configured in the repository
+- Trusted publishing configured on npmjs.com (no token required)
 
 ## AI-assisted release process
 
@@ -53,9 +53,10 @@ REQUIREMENTS:
 - EXCLUDE: docs, build, ci, chore, refactor, test commits
 - Use active voice, present tense
 - Include commit short hashes (GitHub renders as links)
-- Version logic: major.minor format only (no patch)
-  - MINOR version (0.1 -> 0.2): New features, bug fixes, improvements
-  - MAJOR version (0.2 -> 1.0): Breaking changes detected
+- Semver version logic (major.minor.patch):
+  - PATCH: bug fixes, docs, build/CI changes only
+  - MINOR: new features, improvements, backwards compatible
+  - MAJOR: breaking changes
 - Show this preview BEFORE any actions
 
 STEP 3: SHOW PREVIEW
@@ -87,7 +88,7 @@ opencode will:
 
 - **Automatic filtering** of technical commits (docs, tests, CI, etc.)
 - **User-focused** release notes with clear impact descriptions
-- **Smart versioning** - minor for features/fixes, major for breaking changes
+- **Semver versioning** - patch for fixes, minor for features, major for breaking changes
 - **Preview before action** - human approval required
 - **npm provenance** - published packages include provenance attestation
 
@@ -95,5 +96,5 @@ opencode will:
 
 - **gh CLI issues**: Run `gh auth status` to verify authentication
 - **Workflow dispatch failed**: Check repository permissions for workflow dispatch
-- **npm publish failed**: Verify `NPM_TOKEN` secret is configured in the repository
+- **npm publish failed**: Verify trusted publishing is configured on npmjs.com
 - **Invalid release notes**: Review format requirements and regenerate
