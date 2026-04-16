@@ -19,6 +19,8 @@ jobs:
         with:
           node-version: 22
 
+      - run: npm install
+
       - name: Check formatting
         run: npx oxfmt --check .
 
@@ -35,6 +37,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - run: npm install
 
       - name: Verify package
         run: npm pack --dry-run
