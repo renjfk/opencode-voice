@@ -27,6 +27,9 @@
   "exports": {
     ".": {
       "import": "./index.js"
+    },
+    "./tui": {
+      "import": "./index.js"
     }
   },
   "scripts": {
