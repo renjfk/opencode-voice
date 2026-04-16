@@ -12,25 +12,26 @@ via Piper TTS.
 
 ## Architecture
 
-Single TUI plugin exported from `index.js`, with logic split into three
-internal modules under `lib/`.
+Single TUI plugin exported from `index.js`, with logic split into modules
+under `lib/`.
 
-- `index.js` - entry point, registers all commands from STT + TTS + LLM config
+- `index.js` - entry point, registers all commands from STT + TTS
 - `lib/stt.js` - sox recording, whisper-cpp transcription, LLM normalization
 - `lib/tts.js` - Piper/sox audio pipeline, auto/manual speech, event handlers
 - `lib/llm-client.js` - OpenAI-compatible completion client (`createClient(kv, options)`)
+- `lib/session.js` - shared helpers for reading OpenCode session titles
 
 ### Key invariants
 
 - Single default export: `{ id, tui }`. OpenCode's TUI loader requires this shape.
 - No server-side plugin. The `server` property must never be added.
-- `registerSTT(api, kv, complete)` and `registerTTS(api, kv, complete)` return
-  command arrays. TTS also registers event handlers via `api.event.on()` as a side effect.
+- `registerSTT(api, kv, complete, prompts)` and `registerTTS(api, kv, complete, prompts)`
+  return command arrays. TTS also registers event handlers via `api.event.on()` as a side effect.
 - LLM calls use the OpenAI chat completions API, not the Anthropic messages API.
   This keeps the client provider-agnostic.
 - Configuration uses two mechanisms:
   - **`options`** (from `tui.json` plugin tuple) for static LLM endpoint config
-  - **`api.kv`** for runtime state (whisper model, mic, TTS mode, voice, LLM preset overrides)
+  - **`api.kv`** for runtime state (whisper model, mic, TTS mode, voice)
 - No dotfile I/O for config. All persistence goes through `api.kv`.
 - No build step. Plain ESM JavaScript, shipped as-is.
 
