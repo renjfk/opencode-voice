@@ -1,0 +1,42 @@
+{
+  "name": "@renjfk/opencode-voice",
+  "version": "0.1.0",
+  "description": "Speech-to-text and text-to-speech for OpenCode. Record voice prompts with whisper-cpp, hear responses via Piper TTS, with LLM normalization through any OpenAI-compatible endpoint.",
+  "keywords": [
+    "opencode",
+    "piper",
+    "plugin",
+    "speech-to-text",
+    "stt",
+    "text-to-speech",
+    "tts",
+    "voice",
+    "whisper"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/renjfk/opencode-voice.git"
+  },
+  "files": [
+    "index.js",
+    "lib"
+  ],
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": {
+      "import": "./index.js"
+    }
+  },
+  "scripts": {
+    "lint": "npx oxlint .",
+    "fmt": "npx oxfmt --check .",
+    "fmt:fix": "npx oxfmt --write .",
+    "check": "npm run lint && npm run fmt",
+    "prepack": "npm run check"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": "*"
+  }
+}
