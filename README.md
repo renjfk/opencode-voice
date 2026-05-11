@@ -84,7 +84,9 @@ Set defaults in `tui.json` via plugin options:
         "endpoint": "https://api.anthropic.com/v1",
         "model": "claude-haiku-4-5",
         "apiKeyEnv": "ANTHROPIC_API_KEY",
-        "maxTokens": 2048
+        "maxTokens": 2048,
+        "reasoningEffort": "low",
+        "retries": 2
       }
     ]
   ]
@@ -92,6 +94,13 @@ Set defaults in `tui.json` via plugin options:
 ```
 
 Any OpenAI-compatible endpoint works (Ollama, vLLM, LM Studio, etc.).
+
+- `endpoint` - OpenAI-compatible base URL
+- `model` - model name sent to `/chat/completions`
+- `apiKeyEnv` - environment variable containing the API key
+- `maxTokens` - maximum completion tokens for normalization calls
+- `reasoningEffort` - optional reasoning level for models that support it
+- `retries` - number of retry attempts for transient LLM failures
 
 ### Custom prompts
 
@@ -192,6 +201,18 @@ npm run check        # lint + fmt
 npm run lint         # oxlint
 npm run fmt          # oxfmt --check
 npm run fmt:fix      # oxfmt --write
+```
+
+### Test local plugin in OpenCode
+
+To test unpublished changes in the OpenCode TUI, point `~/.config/opencode/tui.json`
+at the local repo path, not the npm package name:
+
+```json
+{
+  "$schema": "https://opencode.ai/tui.json",
+  "plugin": ["/Users/your-user/opencode-voice"]
+}
 ```
 
 ### Release process

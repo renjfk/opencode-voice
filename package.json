@@ -36,6 +36,7 @@
     "lint": "npx oxlint .",
     "fmt": "npx oxfmt --check .",
     "fmt:fix": "npx oxfmt --write .",
+    "test": "node --test",
     "check": "npm run lint && npm run fmt",
     "prepack": "npm run check"
   },
