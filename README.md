@@ -72,6 +72,12 @@ Or with pip:
 pip install piper-tts
 ```
 
+The `piper` executable must be located at `~/.local/bin/piper`. If installed in a different location, you can symlink it there instead:
+
+```bash
+ln -s $(which piper) ~/.local/bin/piper
+```
+
 Download a voice model to `~/.local/share/piper-voices/`:
 
 ```bash
@@ -131,6 +137,13 @@ For unauthenticated local endpoints (e.g. Ollama):
 - `reasoningEffort` _(optional)_ - reasoning level for models that support it
 - `chatTemplateKwargs` _(optional)_ - extra keyword arguments passed to the model's chat template (e.g. `{"enable_thinking": false}` for Qwen models to disable chain-of-thought)
 - `retries` _(optional)_ - number of retry attempts for transient LLM failures
+
+### Logging
+
+The plugin writes diagnostics through OpenCode's structured app logger. If this plugin is not working with your setup, check the OpenCode log file and, optionally, enable debug mode. See the [OpenCode Docs](https://opencode.ai/docs/troubleshooting/#logs) for details.
+
+Routine plugin diagnostics use `debug`; recoverable issues use `warn`; failed
+child processes, API calls, or unexpected exceptions use `error`.
 
 ### STT API transcription (optional)
 
