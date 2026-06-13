@@ -31,13 +31,21 @@ import os from "node:os";
 import { registerSTT } from "./lib/stt.js";
 import { registerTTS } from "./lib/tts.js";
 import { createClient } from "./lib/llm-client.js";
+import { createLogger } from "./lib/logger.js";
 
-function loadPromptFile(filePath) {
+function loadPromptFile(filePath, logger, name) {
   if (!filePath) return null;
   const resolved = filePath.replace(/^~(?=\/|$)/, os.homedir());
   try {
-    return fs.readFileSync(resolved, "utf-8").trim() || null;
-  } catch {
+    const prompt = fs.readFileSync(resolved, "utf-8").trim() || null;
+    logger?.log(
+      "plugin",
+      prompt ? `Loaded ${name} prompt: ${resolved}` : `Ignored empty ${name} prompt: ${resolved}`,
+      "debug",
+    );
+    return prompt;
+  } catch (err) {
+    logger?.log("Plugin", `Failed to load ${name} prompt ${resolved}: ${err.message}`, "warn");
     return null;
   }
 }
@@ -46,16 +54,18 @@ export default {
   id: "opencode-voice",
   tui: async (api, options) => {
     const { kv } = api;
-    const { complete } = createClient(options);
+    const logger = createLogger(api.client);
+    logger.log("plugin", "Initializing", "debug");
+    const { complete } = createClient(options, logger);
 
     const prompts = {
-      stt: loadPromptFile(options?.sttPrompt),
-      ttsAuto: loadPromptFile(options?.ttsAutoPrompt),
-      ttsManual: loadPromptFile(options?.ttsManualPrompt),
+      stt: loadPromptFile(options?.sttPrompt, logger, "STT"),
+      ttsAuto: loadPromptFile(options?.ttsAutoPrompt, logger, "TTS auto"),
+      ttsManual: loadPromptFile(options?.ttsManualPrompt, logger, "TTS manual"),
     };
 
-    const sttCommands = registerSTT(api, kv, complete, prompts, options);
-    const ttsCommands = registerTTS(api, kv, complete, prompts);
+    const sttCommands = registerSTT(api, kv, complete, prompts, options, logger);
+    const ttsCommands = registerTTS(api, kv, complete, prompts, logger);
 
     api.command.register(() => [...sttCommands, ...ttsCommands]);
   },
