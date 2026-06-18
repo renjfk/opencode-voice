@@ -8,7 +8,7 @@
 //
 // Prerequisites:
 //   STT: brew install whisper-cpp sox
-//   TTS: Piper binary at ~/.local/bin/piper, voice models at ~/.local/share/piper-voices/
+//   TTS: Piper binary on PATH, voice models at ~/.local/share/piper-voices/
 //
 // Configuration via tui.json plugin options:
 //   ["opencode-voice", { "endpoint": "...", "model": "...", "apiKeyEnv": "..." }]

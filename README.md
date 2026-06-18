@@ -72,11 +72,7 @@ Or with pip:
 pip install piper-tts
 ```
 
-The `piper` executable must be located at `~/.local/bin/piper`. If installed in a different location, you can symlink it there instead:
-
-```bash
-ln -s $(which piper) ~/.local/bin/piper
-```
+The plugin looks for `piper` on your `PATH` (`~/.local/bin` is typically on `PATH`).
 
 Download a voice model to `~/.local/share/piper-voices/`:
 
