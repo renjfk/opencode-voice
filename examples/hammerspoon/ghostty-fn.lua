@@ -1,7 +1,7 @@
 -- Optional example for OpenCode + opencode-voice in Ghostty.
 --
 -- Workflow:
--- - Press Fn to send ctrl+r and start recording.
+-- - Press Fn to send leader+o and start recording.
 -- - Hold Fn for at least LONG_PRESS_THRESHOLD_SECONDS and release to send
 --   leader+r, which stops recording, normalizes, and submits the prompt.
 --
@@ -19,7 +19,7 @@ local inspect = hs.inspect
 local APP_NAME = "Ghostty"
 local TARGET_TERMINAL = 1
 local LONG_PRESS_THRESHOLD_SECONDS = 0.5
-local START_RECORDING_ACTION = "\\x12"
+local START_RECORDING_ACTION = "\\x18o"
 local SUBMIT_RECORDING_ACTION = "\\x18r"
 
 local fnPressed = false

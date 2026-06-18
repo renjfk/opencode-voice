@@ -201,9 +201,12 @@ If a path is not set, the built-in default prompt is used.
 
 ### Speech-to-text
 
+The `leader` key in OpenCode is `ctrl+x`. So `leader+o` means press `ctrl+x`
+then `o`.
+
 | Command       | Keybind    | Description                            |
 | ------------- | ---------- | -------------------------------------- |
-| `/stt-record` | `ctrl+r`   | Start/stop recording + transcribe      |
+| `/stt-record` | `leader+o` | Start/stop recording + transcribe      |
 | `/stt-submit` | `leader+r` | Stop recording, transcribe, and submit |
 | `/stt-stop`   |            | Cancel recording                       |
 | `/stt-model`  |            | Select whisper model                   |
@@ -297,7 +300,7 @@ for an optional global `Fn` key setup.
 
 Behavior:
 
-- Press `Fn` to send `ctrl+r` and start recording.
+- Press `Fn` to send `leader+o` and start recording.
 - Hold `Fn` for at least 0.5 seconds and release to send `leader+r`, which
   stops recording, normalizes, and submits the prompt.
 

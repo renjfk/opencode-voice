@@ -16,7 +16,7 @@
 // Runtime state (model, mic, voice, tts mode) persisted via api.kv.
 //
 // Commands:
-//   /stt-record (ctrl+r)  - start/stop recording + transcribe
+//   /stt-record (leader+o)- start/stop recording + transcribe
 //   /stt-submit (leader+r)- stop recording + transcribe + submit
 //   /stt-stop             - cancel recording
 //   /stt-model            - select whisper model
