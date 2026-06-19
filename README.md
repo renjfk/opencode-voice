@@ -170,6 +170,8 @@ plugin on a machine without whisper-cpp installed.
 - `sttModel` _(optional)_ - whisper model name to pass to the API (default: `whisper-large-v3-turbo`). Can be changed at runtime via `/stt-model`, which fetches available whisper models from the endpoint's `/models` listing
 - `sttApiKeyEnv` _(optional)_ - environment variable containing the API key
 
+OpenRouter note: when `sttEndpoint` points at `https://openrouter.ai/api/v1`, the plugin automatically uses OpenRouter's JSON/base64 transcription request format instead of multipart upload.
+
 ### Custom prompts
 
 The LLM system prompts used for normalization can be fully replaced by pointing
