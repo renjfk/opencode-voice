@@ -277,6 +277,7 @@ For unauthenticated local endpoints (e.g. Ollama):
 - `retries` _(optional)_ - number of retry attempts for transient LLM failures
 - `tmpDir` _(optional)_ - directory used for the temporary STT recording file (default `/tmp`)
 - `sttLanguage` _(optional)_ - spoken language passed to local `whisper-cli -l` (default `auto`; any whisper.cpp language code, e.g. `en`, `zh`). Can be changed at runtime via `/stt-language`
+- `trimSilence` _(optional)_ - whether to remove leading silence from recordings (default `true`). Set to `false` if your recordings are missing the first word or syllable
 
 ### Logging
 
