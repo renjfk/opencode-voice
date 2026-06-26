@@ -25,6 +25,8 @@
 //   /tts-mode (leader+v) - toggle auto TTS on/off
 //   /tts-stop (escape)   - stop playback
 //   /tts-voice           - select TTS voice
+//   /tts-chunked         - toggle voice bubbles (WhatsApp-style chunks) on/off
+//   /tts-bubbles         - browse and replay the most recent voice bubbles
 
 import fs from "node:fs";
 import os from "node:os";

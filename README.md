@@ -222,12 +222,14 @@ If a path is not set, the built-in default prompt is used.
 The `leader` key in OpenCode is `ctrl+x`. So `leader+s` means press `ctrl+x`
 then `s`.
 
-| Command      | Keybind    | Description              |
-| ------------ | ---------- | ------------------------ |
-| `/tts-speak` | `leader+s` | Read last response aloud |
-| `/tts-mode`  | `leader+v` | Toggle auto TTS on/off   |
-| `/tts-stop`  | `escape`   | Stop playback            |
-| `/tts-voice` |            | Select TTS voice         |
+| Command        | Keybind    | Description                                |
+| -------------- | ---------- | ------------------------------------------ |
+| `/tts-speak`   | `leader+s` | Read last response aloud                   |
+| `/tts-mode`    | `leader+v` | Toggle auto TTS on/off                     |
+| `/tts-stop`    | `escape`   | Stop playback                              |
+| `/tts-voice`   |            | Select TTS voice                           |
+| `/tts-chunked` |            | Toggle WhatsApp-style voice bubbles on/off |
+| `/tts-bubbles` |            | Browse and replay the most recent bubbles  |
 
 ## How it works
 
@@ -259,6 +261,18 @@ When enabled (`/tts-mode`), the plugin automatically speaks:
 - Assistant responses when a session goes idle after work
 - Permission requests
 - Questions that need your answer
+
+### Voice bubbles (WhatsApp-style chunks)
+
+Auto-TTS and `/tts-speak` both feed through a chunker that splits the
+normalized text into short, conversational bubbles of roughly
+`CHUNKER_CONSTANTS.DEFAULT_TARGET_CHARS` (140) characters each. Bubbles
+respect sentence boundaries first, then line breaks, then word boundaries.
+
+The most recent `CHUNKER_CONSTANTS.MAX_BUBBLES` (50) bubbles are kept in
+plugin state so you can replay any of them with `/tts-bubbles`. Use
+`/tts-chunked` to turn the chunker off and fall back to a single long
+playback if you prefer.
 
 ## Contributing
 
