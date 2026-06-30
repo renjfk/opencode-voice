@@ -143,6 +143,7 @@ For unauthenticated local endpoints (e.g. Ollama):
 - `reasoningEffort` _(optional)_ - reasoning level for models that support it
 - `chatTemplateKwargs` _(optional)_ - extra keyword arguments passed to the model's chat template (e.g. `{"enable_thinking": false}` for Qwen models to disable chain-of-thought)
 - `retries` _(optional)_ - number of retry attempts for transient LLM failures
+- `tmpDir` _(optional)_ - directory used for the temporary STT recording file (default `/tmp`)
 
 ### Logging
 
