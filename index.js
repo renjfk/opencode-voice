@@ -20,6 +20,7 @@
 //   /stt-submit (leader+r)- stop recording + transcribe + submit
 //   /stt-stop             - cancel recording
 //   /stt-model            - select whisper model
+//   /stt-language         - select transcription language
 //   /stt-mic              - select microphone
 //   /tts-speak (leader+s)- read last response aloud
 //   /tts-mode (leader+v) - toggle auto TTS on/off

@@ -56,17 +56,242 @@ rm -rf ~/.cache/opencode/packages/@renjfk/
 
 ### Speech-to-text
 
+The plugin uses [whisper.cpp](https://github.com/ggml-org/whisper.cpp) via a
+`whisper-cli` binary and `sox` for microphone capture. Follow the subsection
+for your OS to install the binary and verify your microphone, then run the
+shared **Download model & smoke test** step at the end.
+
+#### macOS
+
+Install the `whisper-cpp` bottle (ships a `whisper-cli` with Metal enabled on
+Apple Silicon) and `sox`:
+
 ```bash
 brew install whisper-cpp sox
 ```
 
-Download a whisper model to `~/.local/share/whisper-cpp/`:
+Verify your microphone by recording a 3-second clip and playing it back. The
+first `sox -d` invocation triggers a macOS microphone permission prompt —
+grant it in **System Settings → Privacy & Security → Microphone**, then rerun.
+Remove the temp file once you've heard yourself clearly:
+
+```bash
+sox -d /tmp/mic-check.wav trim 0 3   # speak for 3 seconds
+play /tmp/mic-check.wav              # you should hear yourself
+rm /tmp/mic-check.wav                # delete after verification
+```
+
+#### Linux (including WSL2)
+
+Install `sox` with its PulseAudio driver (a separate package on Debian/Ubuntu),
+the PulseAudio tools so the plugin can enumerate input devices via `pactl`,
+and the build tools for whisper.cpp:
+
+```bash
+sudo apt install sox libsox-fmt-pulse pulseaudio-utils build-essential cmake
+```
+
+On WSL2, make sure [WSLg](https://learn.microsoft.com/windows/wsl/tutorials/gui-apps)
+is running — it bridges the Windows microphone into WSL as a PulseAudio source
+(typically named `RDPSource`), which you can then pick with `/stt-mic`.
+
+**WSL2 audio troubleshooting.** There is no `/dev/snd` in WSL2 — that is
+normal. Audio goes through WSLg's PulseAudio server at `/mnt/wslg/PulseServer`,
+so ALSA-only tools like `arecord -l` will never list a device. If `/stt-mic`
+finds no devices or `pactl info` fails with `Connection refused`, WSLg's
+PulseAudio is stuck; fix it from Windows PowerShell:
+
+```powershell
+wsl --shutdown   # then reopen Ubuntu (closes all WSL sessions)
+```
+
+If the source list is still empty after a restart, check Windows
+**Settings → Privacy & security → Microphone** and enable both "Microphone
+access" and "Let desktop apps access your microphone" (WSLg captures audio via
+a desktop RDP client), then run `wsl --update` for the latest WSLg.
+
+Verify your microphone by recording a 3-second clip and playing it back.
+Remove the temp file once you've heard yourself clearly; skip building
+whisper.cpp until this works, otherwise `/stt-mic` will have nothing to select:
+
+```bash
+sox -d /tmp/mic-check.wav trim 0 3   # speak for 3 seconds
+play /tmp/mic-check.wav              # you should hear yourself
+rm /tmp/mic-check.wav                # delete after verification
+```
+
+`whisper-cli` is not packaged for Linux, so build whisper.cpp from source.
+Pick **one** of the two builds below.
+
+**CPU build** — works on any machine, adequate for `tiny`/`base`/`small`
+models:
+
+```bash
+git clone https://github.com/ggml-org/whisper.cpp ~/opt/whisper.cpp
+cmake -B ~/opt/whisper.cpp/build -S ~/opt/whisper.cpp \
+  -DCMAKE_BUILD_TYPE=Release -DWHISPER_BUILD_TESTS=OFF
+cmake --build ~/opt/whisper.cpp/build -j --target whisper-cli
+sudo ln -sf ~/opt/whisper.cpp/build/bin/whisper-cli /usr/local/bin/whisper-cli
+```
+
+**CUDA build** — NVIDIA GPU, ~100× faster encode for `medium`/`large` models.
+Check your GPU with `nvidia-smi` and your toolkit with `nvcc --version`, then
+pick the arch code from the table. Set `CUDA_ARCH` to that value for your GPU,
+or to `native` to auto-detect the local GPU. To support several GPU generations
+in one binary, use a semicolon-separated list (e.g. `86;89;90;120`):
+
+| GPU family    | Arch      | `CMAKE_CUDA_ARCHITECTURES` | Min. CUDA |
+| ------------- | --------- | -------------------------- | --------- |
+| RTX 20 / T4   | Turing    | `75`                       | 10.0      |
+| RTX 30 / A100 | Ampere    | `86`                       | 11.0      |
+| RTX 40 / L40  | Ada       | `89`                       | 11.8      |
+| H100          | Hopper    | `90`                       | 12.0      |
+| RTX 50 / B100 | Blackwell | `120`                      | 12.8      |
+
+```bash
+export CUDA_ARCH=89   # replace with the arch for your GPU
+
+git clone https://github.com/ggml-org/whisper.cpp ~/opt/whisper.cpp
+cmake -B ~/opt/whisper.cpp/build -S ~/opt/whisper.cpp \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DGGML_CUDA=ON \
+  -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCH} \
+  -DWHISPER_BUILD_TESTS=OFF
+cmake --build ~/opt/whisper.cpp/build -j --target whisper-cli
+sudo ln -sf ~/opt/whisper.cpp/build/bin/whisper-cli /usr/local/bin/whisper-cli
+```
+
+If you have multiple CUDA toolkits installed (e.g. Blackwell requires CUDA 13
+while the default `nvcc` is 12), also pass `-DCMAKE_CUDA_COMPILER=/usr/local/cuda-13.3/bin/nvcc`
+to point at the matching `nvcc`. CUDA runtime libraries are resolved via
+ldconfig; no `LD_LIBRARY_PATH` is needed.
+
+At runtime the plugin records through sox's `pulseaudio` driver when `pactl`
+is available, and falls back to sox's default device otherwise.
+
+#### Windows
+
+Install `sox` and the build tools:
+
+```powershell
+winget install sox_ng.sox_ng Ninja-build.Ninja
+
+# winget installs the binary as "sox_ng"; the plugin spawns "sox" — create
+# the alias so the plugin can find it:
+copy "$env:LOCALAPPDATA\Microsoft\WinGet\Links\sox_ng.exe" "$env:LOCALAPPDATA\Microsoft\WinGet\Links\sox.exe"
+```
+
+Verify the microphone before building whisper.cpp:
+
+```bat
+sox -d %TEMP%\mic-check.wav trim 0 3
+del %TEMP%\mic-check.wav
+```
+
+plus [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/)
+("Desktop development with C++" workload) and, for NVIDIA GPUs,
+[CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) 12.8 or newer —
+**required for RTX 50 series (Blackwell)**. CUDA 12.6 and older will crash
+with a stack-buffer-overrun error during model loading on these GPUs.
+
+Build whisper.cpp from an "x64 Native Tools Command Prompt" (or any shell
+where `vcvars64.bat` has run). Pick **one** of the two builds below.
+
+**CPU-only build** — no NVIDIA GPU required. Works on any machine and is
+adequate for `tiny`/`base`/`small` models:
+
+```bat
+git clone https://github.com/ggml-org/whisper.cpp %USERPROFILE%\opt\whisper.cpp
+cmake -B %USERPROFILE%\opt\whisper.cpp\build -S %USERPROFILE%\opt\whisper.cpp ^
+  -G Ninja -DCMAKE_BUILD_TYPE=Release ^
+  -DWHISPER_BUILD_TESTS=OFF
+cmake --build %USERPROFILE%\opt\whisper.cpp\build --target whisper-cli -j
+```
+
+**CUDA build** — NVIDIA GPU. `CMAKE_CUDA_ARCHITECTURES` is not fixed: pick
+the arch code for your GPU from the table in the Linux section and append
+`-real` (e.g. RTX 40 → `89-real`). You can also pass a semicolon-separated
+list to support several GPU generations in one binary (e.g. `86;89;90;120`,
+larger and slower to build), or `native` to auto-detect the GPU on the build
+machine. Set `CUDA_ARCH` to that value before running the commands below:
+
+```bat
+set CUDA_ARCH=120-real   # replace with the arch for your GPU
+
+git clone https://github.com/ggml-org/whisper.cpp %USERPROFILE%\opt\whisper.cpp
+cmake -B %USERPROFILE%\opt\whisper.cpp\build -S %USERPROFILE%\opt\whisper.cpp ^
+  -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON ^
+  -DCMAKE_CUDA_ARCHITECTURES=%CUDA_ARCH% ^
+  -DCMAKE_CUDA_FLAGS="-allow-unsupported-compiler" ^
+  -DWHISPER_BUILD_TESTS=OFF
+cmake --build %USERPROFILE%\opt\whisper.cpp\build --target whisper-cli -j
+```
+
+If `nvcc` rejects the newest MSVC toolset, select an older installed one with
+`vcvars64.bat -vcvars_ver=14.44` before configuring.
+
+`whisper-cli.exe` loads its sibling `ggml-*.dll` / `whisper.dll` at runtime,
+so keep the build output together: either add `build\bin` itself to your user
+`PATH`, or copy its contents to a dedicated directory (e.g.
+`C:\Tools\whisper\Release`) and add that to `PATH` under **Settings → System
+→ About → Advanced system settings → Environment Variables → User variables**.
+
+The CUDA build additionally requires the CUDA runtime DLLs (`cudart64_*.dll`,
+`cublas64_*.dll`) from your CUDA Toolkit `bin` directory. Add it to user
+`PATH` as well (e.g. `C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin`).
+
+Open a new terminal, verify with `where whisper-cli`, then fully quit and
+reopen OpenCode so it inherits the new `PATH`. Note: `PATH` changes only take
+effect in new processes. If OpenCode was already running, it must be restarted
+to see the updated environment. If OpenCode still can't find the binary (its
+environment predates the `PATH` change), set the `whisperPath` plugin option
+in `tui.json` to the full path of `whisper-cli.exe` instead — that bypasses
+`PATH` lookup entirely.
+
+Download a model per the shared section below (on Windows the model directory
+is `%USERPROFILE%\.local\share\whisper-cpp\`), then smoke-test:
+
+```bat
+sox -d %TEMP%\smoke.wav trim 0 4
+whisper-cli -m %USERPROFILE%\.local\share\whisper-cpp\ggml-large-v3-turbo-q5_0.bin ^
+  -f %TEMP%\smoke.wav -l auto -nt
+del %TEMP%\smoke.wav
+```
+
+#### Download model & smoke test
+
+Download a whisper model to `~/.local/share/whisper-cpp/` (same path on all
+OSes):
 
 ```bash
 mkdir -p ~/.local/share/whisper-cpp
 curl -L -o ~/.local/share/whisper-cpp/ggml-large-v3-turbo-q5_0.bin \
   https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin
 ```
+
+Smoke-test the install by transcribing a short recording:
+
+```bash
+sox -d /tmp/smoke.wav trim 0 4   # say something for 4 seconds
+whisper-cli -m ~/.local/share/whisper-cpp/ggml-large-v3-turbo-q5_0.bin \
+  -f /tmp/smoke.wav -l auto -nt
+rm /tmp/smoke.wav
+```
+
+Check the first `system_info:` line in the output to confirm the expected
+backend is active:
+
+| Install                        | Expect                  |
+| ------------------------------ | ----------------------- |
+| macOS Homebrew (Apple Silicon) | `METAL = 1`             |
+| CUDA build                     | `CUDA : ARCHS = <n>`    |
+| CPU-only                       | `METAL = 0` / no `CUDA` |
+
+Reference `encode time` on a 4-second clip: CPU `medium` ≈ 15–30 s; CUDA
+`medium` ≈ 100–200 ms; CUDA `large-v3-turbo` ≈ 100–300 ms. Apple Silicon
+Metal timings are hardware-dependent but typically sub-second. If your GPU
+build shows CPU-level timings, the GPU backend failed to load — on Linux,
+re-check `nvidia-smi` and rebuild with the arch code from the table above.
 
 ### Text-to-speech
 
@@ -144,6 +369,8 @@ For unauthenticated local endpoints (e.g. Ollama):
 - `chatTemplateKwargs` _(optional)_ - extra keyword arguments passed to the model's chat template (e.g. `{"enable_thinking": false}` for Qwen models to disable chain-of-thought)
 - `retries` _(optional)_ - number of retry attempts for transient LLM failures
 - `tmpDir` _(optional)_ - directory used for the temporary STT recording file (default `/tmp`)
+- `sttLanguage` _(optional)_ - spoken language passed to local `whisper-cli -l` (default `auto`; any whisper.cpp language code, e.g. `en`, `zh`). Can be changed at runtime via `/stt-language`
+- `whisperPath` _(optional)_ - full path to the `whisper-cli` binary (default: resolved via `PATH`). Useful on Windows when OpenCode's process environment predates a `PATH` change
 
 ### Logging
 
@@ -210,13 +437,22 @@ If a path is not set, the built-in default prompt is used.
 
 ### Speech-to-text
 
-| Command       | Keybind    | Description                            |
-| ------------- | ---------- | -------------------------------------- |
-| `/stt-record` | `ctrl+r`   | Start/stop recording + transcribe      |
-| `/stt-submit` | `leader+r` | Stop recording, transcribe, and submit |
-| `/stt-stop`   |            | Cancel recording                       |
-| `/stt-model`  |            | Select whisper model                   |
-| `/stt-mic`    |            | Select microphone                      |
+| Command         | Keybind    | Description                            |
+| --------------- | ---------- | -------------------------------------- |
+| `/stt-record`   | `ctrl+r`   | Start/stop recording + transcribe      |
+| `/stt-submit`   | `leader+r` | Stop recording, transcribe, and submit |
+| `/stt-stop`     |            | Cancel recording                       |
+| `/stt-model`    |            | Select whisper model                   |
+| `/stt-language` |            | Select transcription language          |
+| `/stt-mic`      |            | Select microphone                      |
+
+`/stt-mic` lists CoreAudio input devices on macOS, and PulseAudio sources on
+Linux (via `pactl`, monitor sources excluded). On systems without a supported
+device listing, "System default" uses sox's default device (`sox -d`).
+
+`/stt-language` offers a curated list of common languages (plus auto-detect)
+and only affects local `whisper-cli` transcription, not the STT API. Languages
+outside the list can be set via the `sttLanguage` plugin option.
 
 ### Text-to-speech
 
@@ -234,7 +470,8 @@ then `s`.
 
 ### STT pipeline
 
-1. `sox` records audio from your microphone
+1. `sox` records audio from your microphone (CoreAudio on macOS, PulseAudio on
+   Linux when `pactl` is available, sox default device otherwise)
 2. `whisper-cli` transcribes locally using a ggml model, or an OpenAI-compatible
    API endpoint if `sttEndpoint` is configured
 3. LLM normalizes the transcription: fixes punctuation, removes filler words,
