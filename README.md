@@ -56,16 +56,52 @@ rm -rf ~/.cache/opencode/packages/@renjfk/
 
 ### Speech-to-text
 
+#### macOS
+
 ```bash
 brew install whisper-cpp sox
 ```
+
+#### Linux
+
+```bash
+# sox for recording (the build pulls in PulseAudio support automatically on
+# Debian/Ubuntu/Fedora; PipeWire exposes PulseAudio-compatible sources).
+sudo apt install sox build-essential cmake git   # Debian/Ubuntu
+# or: sudo dnf install sox gcc-c++ cmake git       # Fedora
+
+# whisper.cpp: build from source (no official apt/dnf package yet)
+git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git ~/dev/whisper.cpp
+cmake -S ~/dev/whisper.cpp -B ~/dev/whisper.cpp/build \
+  -DWHISPER_BUILD_SERVER=OFF -DBUILD_SHARED_LIBS=OFF
+cmake --build ~/dev/whisper.cpp/build --config Release -j"$(nproc)"
+mkdir -p ~/.local/bin
+ln -sf ~/dev/whisper.cpp/build/bin/whisper-cli ~/.local/bin/whisper-cli
+```
+
+The plugin enumerates microphones via `pactl list short sources` (works with
+both PulseAudio and PipeWire). Select one with `/stt-mic` after install.
+
+> **CPU performance note:** `large-v3-turbo` is the recommended model on
+> Apple Silicon or with a GPU, but on a CPU-only Linux box it transcribes at
+> ~10x realtime (a 3s clip takes ~36s). For CPU-only setups, `base.en`
+> (~142MB) is ~18x faster and still accurate enough when combined with LLM
+> normalization. Switch via `/stt-model` after install.
+
+#### whisper model (both platforms)
 
 Download a whisper model to `~/.local/share/whisper-cpp/`:
 
 ```bash
 mkdir -p ~/.local/share/whisper-cpp
+
+# Recommended on Apple Silicon / GPU
 curl -L -o ~/.local/share/whisper-cpp/ggml-large-v3-turbo-q5_0.bin \
   https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin
+
+# Or, for CPU-only setups (much faster, less accurate):
+curl -L -o ~/.local/share/whisper-cpp/ggml-base.en.bin \
+  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
 ```
 
 ### Text-to-speech
