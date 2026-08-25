@@ -365,12 +365,14 @@ outside the list can be set via the `sttLanguage` plugin option.
 The `leader` key in OpenCode is `ctrl+x`. So `leader+s` means press `ctrl+x`
 then `s`.
 
-| Command      | Keybind    | Description              |
-| ------------ | ---------- | ------------------------ |
-| `/tts-speak` | `leader+s` | Read last response aloud |
-| `/tts-mode`  | `leader+v` | Toggle auto TTS on/off   |
-| `/tts-stop`  | `escape`   | Stop playback            |
-| `/tts-voice` |            | Select TTS voice         |
+| Command        | Keybind    | Description                                |
+| -------------- | ---------- | ------------------------------------------ |
+| `/tts-speak`   | `leader+s` | Read last response aloud                   |
+| `/tts-mode`    | `leader+v` | Toggle auto TTS on/off                     |
+| `/tts-stop`    | `escape`   | Stop playback                              |
+| `/tts-voice`   |            | Select TTS voice                           |
+| `/tts-chunked` |            | Toggle WhatsApp-style voice bubbles on/off |
+| `/tts-bubbles` |            | Browse and replay the most recent bubbles  |
 
 ## How it works
 
@@ -403,6 +405,70 @@ When enabled (`/tts-mode`), the plugin automatically speaks:
 - Assistant responses when a session goes idle after work
 - Permission requests
 - Questions that need your answer
+
+### TTS engines
+
+By default the plugin synthesizes speech with [Piper](https://github.com/rhasspy/piper)
+running locally and piping raw PCM through `play` (sox). That works offline
+and has zero API cost.
+
+You can switch to **Deepgram Aura 2** cloud TTS instead with `/tts-engine`
+or by configuring `ttsEngine` in `tui.json`:
+
+```json
+{
+  "plugin": [
+    [
+      "@renjfk/opencode-voice",
+      {
+        "endpoint": "https://api.anthropic.com/v1",
+        "model": "claude-haiku-4-5",
+        "apiKeyEnv": "ANTHROPIC_API_KEY",
+        "ttsEngine": "deepgram",
+        "deepgramApiKeyEnv": "DEEPGRAM_API_KEY",
+        "deepgramModel": "aura-2-thalia-en",
+        "deepgramContainer": "mp3"
+      }
+    ]
+  ]
+}
+```
+
+- `ttsEngine` _(optional)_ - `"piper"` (default) or `"deepgram"`
+- `deepgramApiKeyEnv` _(optional)_ - env var name holding your Deepgram
+  project key. Defaults to `DEEPGRAM_API_KEY`. The plugin reads the key
+  at call time, never stores it on disk.
+- `deepgramModel` _(optional)_ - any Aura 2 voice slug
+  (e.g. `aura-2-thalia-en`, `aura-2-celeste-es`). Defaults to
+  `aura-2-thalia-en`.
+- `deepgramContainer` _(optional)_ - `mp3` (default), `wav`, or `ogg`.
+
+When using Deepgram, the plugin POSTs the normalized text to
+`https://api.deepgram.com/v1/speak`, decodes the response through
+`ffmpeg` into raw PCM at the same rate Piper uses, and plays it through
+`sox`. `ffmpeg` is therefore a hard requirement only when you opt in to
+the Deepgram engine.
+
+### Manual-only by default
+
+TTS auto-play (`/tts-mode`) defaults to **off** so the assistant only
+speaks when you press the manual trigger (`/tts-speak` or `leader+s`).
+This keeps idle TUI sessions quiet and avoids burning Piper/Deepgram
+cycles on responses you did not ask to hear. Flip `/tts-mode` on if you
+want every session.idle, permission request, and question to be
+spoken.
+
+### Voice bubbles (WhatsApp-style chunks)
+
+Auto-TTS and `/tts-speak` both feed through a chunker that splits the
+normalized text into short, conversational bubbles of roughly
+`CHUNKER_CONSTANTS.DEFAULT_TARGET_CHARS` (140) characters each. Bubbles
+respect sentence boundaries first, then line breaks, then word boundaries.
+
+The most recent `CHUNKER_CONSTANTS.MAX_BUBBLES` (50) bubbles are kept in
+plugin state so you can replay any of them with `/tts-bubbles`. Use
+`/tts-chunked` to turn the chunker off and fall back to a single long
+playback if you prefer.
 
 ## Contributing
 

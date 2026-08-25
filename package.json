@@ -40,6 +40,9 @@
     "check": "npm run lint && npm run fmt",
     "prepack": "npm run check"
   },
+  "dependencies": {
+    "@opentui/solid": "^0.1.87"
+  },
   "devDependencies": {
     "oxfmt": "0.50.0",
     "oxlint": "1.65.0"

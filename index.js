@@ -22,10 +22,13 @@
 //   /stt-model            - select whisper model
 //   /stt-language         - select transcription language
 //   /stt-mic              - select microphone
-//   /tts-speak (leader+s)- read last response aloud
-//   /tts-mode (leader+v) - toggle auto TTS on/off
+//   /tts-speak (leader+s)- read last response aloud (manual, no auto-speak)
+//   /tts-mode (leader+v) - toggle auto TTS on/off (default off; saves resources)
 //   /tts-stop (escape)   - stop playback
-//   /tts-voice           - select TTS voice
+//   /tts-voice           - select Piper voice
+//   /tts-engine          - switch TTS engine (Piper local / Deepgram Aura 2)
+//   /tts-chunked         - toggle voice bubbles (WhatsApp-style chunks) on/off
+//   /tts-bubbles         - browse and replay the most recent voice bubbles
 
 import fs from "node:fs";
 import os from "node:os";
