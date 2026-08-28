@@ -8,14 +8,17 @@
 Speech-to-text and text-to-speech plugin for [OpenCode](https://opencode.ai/).
 
 Record voice prompts with local whisper transcription, hear assistant responses
-spoken aloud via Piper TTS. Both directions use an LLM to normalize text for
-natural speech (fixing homophones, splitting camelCase identifiers, summarizing
-code-heavy responses, etc.).
+spoken aloud via Piper TTS. An LLM can optionally normalize text for natural
+speech (fixing homophones, splitting camelCase identifiers, summarizing
+code-heavy responses, etc.). Speech-to-text works without an LLM: raw whisper
+transcription is used directly when no `endpoint`/`model` is configured.
 
 ## Install
 
 Add to your `tui.json` (create at `~/.config/opencode/tui.json` if it doesn't
-exist). You must configure at least `endpoint` and `model`:
+exist). An LLM `endpoint` and `model` are optional and only needed for text
+normalization. For speech-to-text alone you can enable the plugin with an empty
+config (or just `sttLanguage`):
 
 > [!NOTE]
 > **Clobbering default keybinds.** This plugin uses `ctrl+r` for voice
@@ -228,10 +231,12 @@ curl -L -o ~/.local/share/piper-voices/en_US-ryan-high.onnx.json \
 
 ### LLM endpoint
 
-An OpenAI-compatible LLM endpoint is required for text normalization. For
-speech-to-text it cleans up whisper output (punctuation, filler words, software
-engineering homophones). For text-to-speech it converts markdown into natural
-spoken text.
+An OpenAI-compatible LLM endpoint is optional. When configured it normalizes
+text: for speech-to-text it cleans up whisper output (punctuation, filler words,
+software engineering homophones); for text-to-speech it converts markdown into
+natural spoken text. Without `endpoint`/`model`, speech-to-text still works and
+uses the raw whisper transcription directly. Text-to-speech requires the LLM
+endpoint and reports unavailability if it is not configured.
 
 Configure your endpoint in `tui.json` via plugin options. Any OpenAI-compatible
 endpoint works (Anthropic, OpenAI, Ollama, vLLM, LM Studio, etc.). The `apiKeyEnv`
@@ -268,8 +273,8 @@ For unauthenticated local endpoints (e.g. Ollama):
 }
 ```
 
-- `endpoint` _(required)_ - OpenAI-compatible base URL
-- `model` _(required)_ - model name sent to `/chat/completions`
+- `endpoint` _(optional)_ - OpenAI-compatible base URL. Required together with `model` for LLM normalization.
+- `model` _(optional)_ - model name sent to `/chat/completions`. Required together with `endpoint` for LLM normalization.
 - `apiKeyEnv` _(optional)_ - environment variable containing the API key
 - `maxTokens` _(optional)_ - maximum completion tokens for normalization calls
 - `reasoningEffort` _(optional)_ - reasoning level for models that support it
@@ -381,9 +386,10 @@ then `s`.
    Linux when `pactl` is available, sox default device otherwise)
 2. `whisper-cli` transcribes locally using a ggml model, or an OpenAI-compatible
    API endpoint if `sttEndpoint` is configured
-3. LLM normalizes the transcription: fixes punctuation, removes filler words,
-   corrects software engineering homophones ("Jason" to "JSON", "bullion" to
-   "boolean", etc.)
+3. If an LLM `endpoint`/`model` is configured, it normalizes the transcription:
+   fixes punctuation, removes filler words, corrects software engineering
+   homophones ("Jason" to "JSON", "bullion" to "boolean", etc.). Without an LLM,
+   the raw transcription is used directly
 4. Cleaned text is appended to the OpenCode prompt, or submitted immediately
    when `/stt-submit` is used. If normalization fails (e.g. LLM endpoint
    unreachable), the raw transcription is used as a fallback so you never lose
