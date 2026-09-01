@@ -15,17 +15,20 @@
 //
 // Runtime state (model, mic, voice, tts mode) persisted via api.kv.
 //
-// Commands:
-//   /stt-record (ctrl+r)  - start/stop recording + transcribe
-//   /stt-submit (leader+r)- stop recording + transcribe + submit
-//   /stt-stop             - cancel recording
-//   /stt-model            - select whisper model
-//   /stt-language         - select transcription language
-//   /stt-mic              - select microphone
-//   /tts-speak (leader+s)- read last response aloud
-//   /tts-mode (leader+v) - toggle auto TTS on/off
-//   /tts-stop (escape)   - stop playback
+// Commands (palette + slash; default shortcuts use rare leader combos to avoid collisions):
+//   /stt-record          - start/stop recording + transcribe  (default: <leader>[ = ctrl+x, [)
+//   /stt-submit          - stop recording + transcribe + submit (palette-only)
+//   /stt-stop            - cancel recording (palette-only)
+//   /stt-model           - select whisper model
+//   /stt-language        - select transcription language
+//   /stt-mic             - select microphone
+//   /tts-speak           - read last response aloud        (default: <leader>] = ctrl+x, ])
+//   /tts-mode            - toggle auto TTS on/off (palette-only)
+//   /tts-stop            - stop playback                   (default: <leader>; , also palette)
 //   /tts-voice           - select TTS voice
+//   All also palette-accessible via Ctrl+P or /slash. Override via plugin options `keybinds`:
+//   { "keybinds": { "stt.record": "ctrl+r", "tts.speak-last": "none" } }
+//   Weird keys [ ] ; were chosen because opencode doesn't use them and shift variants were ignored in terminals.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -66,7 +69,7 @@ export default {
     };
 
     const sttCommands = registerSTT(api, kv, complete, prompts, options, logger);
-    const ttsCommands = registerTTS(api, kv, complete, prompts, logger);
+    const ttsCommands = registerTTS(api, kv, complete, prompts, options, logger);
 
     api.command.register(() => [...sttCommands, ...ttsCommands]);
   },
