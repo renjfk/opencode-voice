@@ -33,6 +33,16 @@ test("returns error when model is not configured", async () => {
   });
 });
 
+test("reports isConfigured only when endpoint and model are both set", () => {
+  assert.equal(createClient().isConfigured, false);
+  assert.equal(createClient({ endpoint: "https://example.test/v1" }).isConfigured, false);
+  assert.equal(createClient({ model: "test-model" }).isConfigured, false);
+  assert.equal(
+    createClient({ endpoint: "https://example.test/v1", model: "test-model" }).isConfigured,
+    true,
+  );
+});
+
 test("sends chat completions requests with reasoning_effort when configured", async () => {
   const previousKey = process.env.TEST_LLM_API_KEY;
   const previousFetch = globalThis.fetch;

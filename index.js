@@ -13,6 +13,9 @@
 // Configuration via tui.json plugin options:
 //   ["opencode-voice", { "endpoint": "...", "model": "...", "apiKeyEnv": "..." }]
 //
+// `endpoint`/`model` are optional: without them STT uses the raw whisper
+// transcription directly (no LLM normalization).
+//
 // Runtime state (model, mic, voice, tts mode) persisted via api.kv.
 //
 // Commands:
@@ -57,7 +60,7 @@ export default {
     const { kv } = api;
     const logger = createLogger(api.client);
     logger.log("plugin", "Initializing", "debug");
-    const { complete } = createClient(options, logger);
+    const { complete, isConfigured } = createClient(options, logger);
 
     const prompts = {
       stt: loadPromptFile(options?.sttPrompt, logger, "STT"),
@@ -65,7 +68,7 @@ export default {
       ttsManual: loadPromptFile(options?.ttsManualPrompt, logger, "TTS manual"),
     };
 
-    const sttCommands = registerSTT(api, kv, complete, prompts, options, logger);
+    const sttCommands = registerSTT(api, kv, complete, prompts, options, logger, isConfigured);
     const ttsCommands = registerTTS(api, kv, complete, prompts, logger);
 
     api.command.register(() => [...sttCommands, ...ttsCommands]);
