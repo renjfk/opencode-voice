@@ -136,7 +136,9 @@ sudo ln -sf ~/opt/whisper.cpp/build/bin/whisper-cli /usr/local/bin/whisper-cli
 
 **CUDA build** — NVIDIA GPU, ~100× faster encode for `medium`/`large` models.
 Check your GPU with `nvidia-smi` and your toolkit with `nvcc --version`, then
-pick the arch code from the table:
+pick the arch code from the table. Set `CUDA_ARCH` to that value for your GPU,
+or to `native` to auto-detect the local GPU. To support several GPU generations
+in one binary, use a semicolon-separated list (e.g. `86;89;90;120`):
 
 | GPU family    | Arch      | `CMAKE_CUDA_ARCHITECTURES` | Min. CUDA |
 | ------------- | --------- | -------------------------- | --------- |
@@ -147,11 +149,13 @@ pick the arch code from the table:
 | RTX 50 / B100 | Blackwell | `120`                      | 13.0      |
 
 ```bash
+export CUDA_ARCH=89   # replace with the arch for your GPU
+
 git clone https://github.com/ggml-org/whisper.cpp ~/opt/whisper.cpp
 cmake -B ~/opt/whisper.cpp/build -S ~/opt/whisper.cpp \
   -DCMAKE_BUILD_TYPE=Release \
   -DGGML_CUDA=ON \
-  -DCMAKE_CUDA_ARCHITECTURES=89 \
+  -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCH} \
   -DWHISPER_BUILD_TESTS=OFF
 cmake --build ~/opt/whisper.cpp/build -j --target whisper-cli
 sudo ln -sf ~/opt/whisper.cpp/build/bin/whisper-cli /usr/local/bin/whisper-cli
@@ -165,9 +169,98 @@ ldconfig; no `LD_LIBRARY_PATH` is needed.
 At runtime the plugin records through sox's `pulseaudio` driver when `pactl`
 is available, and falls back to sox's default device otherwise.
 
+#### Windows
+
+Install `sox` and the build tools:
+
+```powershell
+winget install sox_ng.sox_ng Ninja-build.Ninja
+
+# winget installs the binary as "sox_ng"; the plugin spawns "sox" — create
+# the alias so the plugin can find it:
+copy "$env:LOCALAPPDATA\Microsoft\WinGet\Links\sox_ng.exe" "$env:LOCALAPPDATA\Microsoft\WinGet\Links\sox.exe"
+```
+
+Verify the microphone before building whisper.cpp:
+
+```bat
+sox -d %TEMP%\mic-check.wav trim 0 3
+del %TEMP%\mic-check.wav
+```
+
+plus [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/)
+("Desktop development with C++" workload) and, for NVIDIA GPUs,
+[CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) 12.8 or newer —
+**required for RTX 50 series (Blackwell)**. CUDA 12.6 and older will crash
+with a stack-buffer-overrun error during model loading on these GPUs.
+
+Build whisper.cpp from an "x64 Native Tools Command Prompt" (or any shell
+where `vcvars64.bat` has run). Pick **one** of the two builds below.
+
+**CPU-only build** — no NVIDIA GPU required. Works on any machine and is
+adequate for `tiny`/`base`/`small` models:
+
+```bat
+git clone https://github.com/ggml-org/whisper.cpp %USERPROFILE%\opt\whisper.cpp
+cmake -B %USERPROFILE%\opt\whisper.cpp\build -S %USERPROFILE%\opt\whisper.cpp ^
+  -G Ninja -DCMAKE_BUILD_TYPE=Release ^
+  -DWHISPER_BUILD_TESTS=OFF
+cmake --build %USERPROFILE%\opt\whisper.cpp\build --target whisper-cli -j
+```
+
+**CUDA build** — NVIDIA GPU. `CMAKE_CUDA_ARCHITECTURES` is not fixed: pick
+the arch code for your GPU from the table in the Linux section and append
+`-real` (e.g. RTX 40 → `89-real`). You can also pass a semicolon-separated
+list to support several GPU generations in one binary (e.g. `86;89;90;120`,
+larger and slower to build), or `native` to auto-detect the GPU on the build
+machine. Set `CUDA_ARCH` to that value before running the commands below:
+
+```bat
+set CUDA_ARCH=120-real   # replace with the arch for your GPU
+
+git clone https://github.com/ggml-org/whisper.cpp %USERPROFILE%\opt\whisper.cpp
+cmake -B %USERPROFILE%\opt\whisper.cpp\build -S %USERPROFILE%\opt\whisper.cpp ^
+  -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON ^
+  -DCMAKE_CUDA_ARCHITECTURES=%CUDA_ARCH% ^
+  -DCMAKE_CUDA_FLAGS="-allow-unsupported-compiler" ^
+  -DWHISPER_BUILD_TESTS=OFF
+cmake --build %USERPROFILE%\opt\whisper.cpp\build --target whisper-cli -j
+```
+
+If `nvcc` rejects the newest MSVC toolset, select an older installed one with
+`vcvars64.bat -vcvars_ver=14.44` before configuring.
+
+`whisper-cli.exe` loads its sibling `ggml-*.dll` / `whisper.dll` at runtime,
+so keep the build output together: either add `build\bin` itself to your user
+`PATH`, or copy its contents to a dedicated directory (e.g.
+`C:\Tools\whisper\Release`) and add that to `PATH` under **Settings → System
+→ About → Advanced system settings → Environment Variables → User variables**.
+
+The CUDA build additionally requires the CUDA runtime DLLs (`cudart64_*.dll`,
+`cublas64_*.dll`) from your CUDA Toolkit `bin` directory. Add it to user
+`PATH` as well (e.g. `C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin`).
+
+Open a new terminal, verify with `where whisper-cli`, then fully quit and
+reopen OpenCode so it inherits the new `PATH`. Note: `PATH` changes only take
+effect in new processes. If OpenCode was already running, it must be restarted
+to see the updated environment. If OpenCode still can't find the binary (its
+environment predates the `PATH` change), set the `whisperPath` plugin option
+in `tui.json` to the full path of `whisper-cli.exe` instead — that bypasses
+`PATH` lookup entirely.
+
+Download a model per the shared section below (on Windows the model directory
+is `%USERPROFILE%\.local\share\whisper-cpp\`), then smoke-test:
+
+```bat
+sox -d %TEMP%\smoke.wav trim 0 4
+whisper-cli -m %USERPROFILE%\.local\share\whisper-cpp\ggml-large-v3-turbo-q5_0.bin ^
+  -f %TEMP%\smoke.wav -l auto -nt
+del %TEMP%\smoke.wav
+```
+
 #### Download model & smoke test
 
-Download a whisper model to `~/.local/share/whisper-cpp/` (same path on both
+Download a whisper model to `~/.local/share/whisper-cpp/` (same path on all
 OSes):
 
 ```bash
@@ -191,7 +284,7 @@ backend is active:
 | Install                        | Expect                  |
 | ------------------------------ | ----------------------- |
 | macOS Homebrew (Apple Silicon) | `METAL = 1`             |
-| Linux CUDA build               | `CUDA : ARCHS = <n>`    |
+| CUDA build                     | `CUDA : ARCHS = <n>`    |
 | CPU-only                       | `METAL = 0` / no `CUDA` |
 
 Reference `encode time` on a 4-second clip: CPU `medium` ≈ 15–30 s; CUDA
@@ -278,6 +371,7 @@ For unauthenticated local endpoints (e.g. Ollama):
 - `tmpDir` _(optional)_ - directory used for the temporary STT recording file (default `/tmp`)
 - `sttLanguage` _(optional)_ - spoken language passed to local `whisper-cli -l` (default `auto`; any whisper.cpp language code, e.g. `en`, `zh`). Can be changed at runtime via `/stt-language`
 - `trimSilence` _(optional)_ - whether to remove leading silence from recordings (default `true`). Set to `false` if your recordings are missing the first word or syllable
+- `whisperPath` _(optional)_ - full path to the `whisper-cli` binary (default: resolved via `PATH`). Useful on Windows when OpenCode's process environment predates a `PATH` change
 
 ### Logging
 
