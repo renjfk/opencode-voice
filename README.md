@@ -146,7 +146,7 @@ in one binary, use a semicolon-separated list (e.g. `86;89;90;120`):
 | RTX 30 / A100 | Ampere    | `86`                       | 11.0      |
 | RTX 40 / L40  | Ada       | `89`                       | 11.8      |
 | H100          | Hopper    | `90`                       | 12.0      |
-| RTX 50 / B100 | Blackwell | `120`                      | 12.8      |
+| RTX 50 / B100 | Blackwell | `120`                      | 13.0      |
 
 ```bash
 export CUDA_ARCH=89   # replace with the arch for your GPU
@@ -370,6 +370,7 @@ For unauthenticated local endpoints (e.g. Ollama):
 - `retries` _(optional)_ - number of retry attempts for transient LLM failures
 - `tmpDir` _(optional)_ - directory used for the temporary STT recording file (default `/tmp`)
 - `sttLanguage` _(optional)_ - spoken language passed to local `whisper-cli -l` (default `auto`; any whisper.cpp language code, e.g. `en`, `zh`). Can be changed at runtime via `/stt-language`
+- `trimSilence` _(optional)_ - whether to remove leading silence from recordings (default `true`). Set to `false` if your recordings are missing the first word or syllable
 - `whisperPath` _(optional)_ - full path to the `whisper-cli` binary (default: resolved via `PATH`). Useful on Windows when OpenCode's process environment predates a `PATH` change
 
 ### Logging
