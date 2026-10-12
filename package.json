@@ -20,6 +20,7 @@
   },
   "files": [
     "index.js",
+    "tui.js",
     "lib"
   ],
   "type": "module",

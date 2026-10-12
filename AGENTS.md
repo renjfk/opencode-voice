@@ -5,13 +5,16 @@ only document constraints and rules an agent would get wrong without being told.
 
 ## Architecture
 
-Single TUI plugin exported from `index.js` with logic split into `lib/`.
+Single OpenCode V2 CLI plugin exported from `index.js` with logic split into `lib/`.
 
 ## Key invariants
 
-- Single default export: `{ id, tui }`. No server-side plugin.
+- Single default export: `Plugin.define({ id, setup })` from `@opencode/plugin/tui`. No server-side plugin.
+- The host provides `@opencode/plugin/tui` at runtime; never add it as a runtime dependency.
 - LLM calls use the OpenAI chat completions API, not the Anthropic messages API.
-- Configuration uses `options` (static) and `api.kv` (runtime). No dotfile I/O.
+- Configuration uses `context.options` (static) and `context.storage` (runtime, wrapped by `lib/kv.js`). No dotfile I/O.
+- V2 does not expose the prompt composer to plugins; STT sends prompts via `context.client.session.prompt`. Do not reintroduce `tui.appendPrompt`/`api.command.register` (V1 APIs).
+- Voice features need `submitOnStop: true` for hands-free sending; the default opens an edit dialog instead.
 - No build step. Plain ESM JavaScript, shipped as-is.
 
 ## Scripts
