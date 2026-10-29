@@ -1,0 +1,27 @@
+#!/usr/bin/expect -f
+# Run this locally (with a working mic + whisper model) to record a
+# full voice demo. Then: agg assets/voice.cast assets/voice.gif
+set timeout 20
+spawn opencode
+sleep 7
+# Start STT recording (shows waveform UI)
+send "\x10"; sleep 1.5
+send "stt record"; sleep 1.5
+send "\r"; sleep 6
+# Stop + transcribe
+send "\x10"; sleep 1
+send "stt submit"; sleep 1
+send "\r"; sleep 4
+# Voice conversation mode
+send "\x10"; sleep 1
+send "voice conversation"; sleep 1.5
+send "\r"; sleep 5
+send "\x10"; sleep 1
+send "voice conversation stop"; sleep 1
+send "\r"; sleep 2
+# TTS speak last response
+send "\x10"; sleep 1
+send "tts speak"; sleep 1
+send "\r"; sleep 4
+send "\x03"; sleep 1
+expect eof

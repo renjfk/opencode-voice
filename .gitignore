@@ -1,2 +1,4 @@
 node_modules/
 *.tgz
+.opencode/loopd/
+graphify-out/

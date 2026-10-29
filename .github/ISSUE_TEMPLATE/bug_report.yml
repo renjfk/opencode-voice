@@ -10,7 +10,7 @@ body:
     id: plugin-version
     attributes:
       label: Plugin version
-      description: "Run: npm list @renjfk/opencode-voice"
+      description: "Run: npm list @bojackduy/opencode-voice"
       placeholder: "0.1.2"
     validations:
       required: true

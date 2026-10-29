@@ -1,6 +1,6 @@
 {
-  "name": "@renjfk/opencode-voice",
-  "version": "0.1.0",
+  "name": "@bojackduy/opencode-voice",
+  "version": "0.11.3",
   "description": "Speech-to-text and text-to-speech for OpenCode. Record voice prompts with whisper-cpp, hear responses via Piper TTS, with LLM normalization through any OpenAI-compatible endpoint.",
   "keywords": [
     "opencode",
@@ -13,13 +13,14 @@
     "voice",
     "whisper"
   ],
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/renjfk/opencode-voice.git"
+    "url": "git+https://github.com/bojackduy/opencode-voice.git"
   },
   "files": [
     "index.js",
+    "tui.js",
     "lib"
   ],
   "type": "module",
@@ -32,13 +33,20 @@
       "import": "./index.js"
     }
   },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "lint": "npx oxlint .",
     "fmt": "npx oxfmt --check .",
     "fmt:fix": "npx oxfmt --write .",
     "test": "node --test",
     "check": "npm run lint && npm run fmt",
-    "prepack": "npm run check"
+    "prepack": "npm run check && npm test",
+    "release:patch": "npm run check && npm test && npm version patch -m \"chore: release %s\" && git push fork master && git push fork $(git describe --tags --abbrev=0)",
+    "release:minor": "npm run check && npm test && npm version minor -m \"chore: release %s\" && git push fork master && git push fork $(git describe --tags --abbrev=0)",
+    "release:major": "npm run check && npm test && npm version major -m \"chore: release %s\" && git push fork master && git push fork $(git describe --tags --abbrev=0)"
   },
   "devDependencies": {
     "oxfmt": "0.50.0",
