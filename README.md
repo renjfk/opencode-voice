@@ -375,6 +375,38 @@ then `s`.
 | `/tts-stop`  | `escape`   | Stop playback            |
 | `/tts-voice` |            | Select TTS voice         |
 
+### Custom keybinds
+
+V2 keymaps take the binding from the command definition, so plugin commands
+cannot be remapped from `cli.json`. Set them through the `keybinds` plugin
+option instead; keys you omit keep their default.
+
+```json
+{
+  "plugins": [
+    {
+      "package": "@renjfk/opencode-voice",
+      "options": {
+        "keybinds": { "record": "f5", "mic": "<leader>i", "voice": "<leader>o" }
+      }
+    }
+  ]
+}
+```
+
+| Key               | Default    | Command       |
+| ----------------- | ---------- | ------------- |
+| `record`          | `ctrl+r`   | `/stt-record` |
+| `submit`          | `leader+r` | `/stt-submit` |
+| `cancelRecording` | —          | `/stt-stop`   |
+| `mic`             | —          | `/stt-mic`    |
+| `speak`           | `leader+s` | `/tts-speak`  |
+| `toggleTts`       | `leader+v` | `/tts-mode`   |
+| `stopPlayback`    | `escape`   | `/tts-stop`   |
+| `voice`           | —          | `/tts-voice`  |
+
+Use an empty string or `"none"` to disable a binding.
+
 ## How it works
 
 ### STT pipeline

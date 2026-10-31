@@ -239,7 +239,7 @@ function toCommand(command) {
     id: command.value,
     title: command.title,
     description: command.description,
-    bind: command.keybind,
+    bind: command.keybind || undefined,
     palette: true,
     slash: command.slash,
     run: () => command.onSelect(),
@@ -264,7 +264,7 @@ export default Plugin.define({
     const api = createApi(context, kv);
 
     const sttCommands = registerSTT(api, kv, complete, prompts, options, logger);
-    const ttsCommands = registerTTS(api, kv, complete, prompts, logger);
+    const ttsCommands = registerTTS(api, kv, complete, prompts, options, logger);
 
     context.keymap.layer(() => ({
       mode: "global",

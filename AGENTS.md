@@ -12,6 +12,9 @@ Single TUI plugin exported from `index.js` with logic split into `lib/`.
 - Single TUI plugin via `Plugin.define` from `@opencode/plugin/tui`; `setup`
   returns a cleanup that detaches the data listeners. No server-side plugin.
 - LLM calls use the OpenAI chat completions API, not the Anthropic messages API.
+- Command keybinds come from `resolveKeybinds()` in `lib/keybinds.js` (the
+  `keybinds` plugin option). V2 keymaps read the binding from the command
+  definition, so they cannot be remapped from `cli.json`.
 - Configuration uses `options` (static) and the storage-backed `api.kv`
   (runtime). No dotfile I/O.
 - Auto TTS triggers on `session.execution.started` / `succeeded` /
