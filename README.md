@@ -58,9 +58,13 @@ rm -rf ~/.cache/opencode/packages/@renjfk/
 ### Speech-to-text
 
 The plugin uses [whisper.cpp](https://github.com/ggml-org/whisper.cpp) via a
-`whisper-cli` binary and `sox` for microphone capture. Follow the subsection
-for your OS to install the binary and verify your microphone, then run the
-shared **Download model & smoke test** step at the end.
+`whisper-cli` binary and `sox` for microphone capture. On Linux the capture
+itself goes through `parec` (from `pulseaudio-utils`, always present on
+PipeWire/PulseAudio systems) piped into `sox`, because Debian and Ubuntu ship
+`sox` without the pulseaudio format handler unless `libsox-fmt-pulse` is
+installed. Follow the subsection for your OS to install the binary and verify
+your microphone, then run the shared **Download model & smoke test** step at the
+end.
 
 #### macOS
 

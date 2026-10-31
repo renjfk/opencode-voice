@@ -7,6 +7,7 @@ import {
   buildRecordArgs,
   buildWhisperArgs,
   isOpenRouterEndpoint,
+  isPulseLikeBackend,
   isWSL,
   parsePactlSources,
   parsePactlSourcesShort,
@@ -131,4 +132,22 @@ test("builds whisper-cli args with language", () => {
     "-np",
     "-nt",
   ]);
+});
+
+test("parec is handled as a pulse-like backend", () => {
+  assert.equal(isPulseLikeBackend("parec"), true);
+  assert.equal(isPulseLikeBackend("pulseaudio"), true);
+  assert.equal(isPulseLikeBackend("default"), false);
+  assert.equal(isPulseLikeBackend("coreaudio"), false);
+});
+
+test("audio hints cover the parec backend", () => {
+  assert.equal(
+    buildAudioHint({ backend: "parec", serverOk: true, isWsl: false }),
+    "No input devices found - check your audio input source configuration",
+  );
+  assert.match(
+    buildAudioHint({ backend: "parec", serverOk: false, isWsl: false }),
+    /Audio server unreachable/,
+  );
 });
