@@ -40,7 +40,7 @@ import os from "node:os";
 import { Plugin } from "@opencode/plugin/tui";
 import { registerSTT } from "./lib/stt.js";
 import { registerTTS } from "./lib/tts.js";
-import { createClient } from "./lib/llm-client.js";
+import { createNormalizer } from "./lib/normalize.js";
 import { createLogger } from "./lib/logger.js";
 
 function loadPromptFile(filePath, logger, name) {
@@ -252,7 +252,7 @@ export default Plugin.define({
     const options = context.options;
     const logger = createLogger();
     logger.log("plugin", "Initializing", "debug");
-    const { complete } = createClient(options, logger);
+    const { complete } = createNormalizer(options, logger);
 
     const prompts = {
       stt: loadPromptFile(options?.sttPrompt, logger, "STT"),

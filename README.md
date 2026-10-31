@@ -269,6 +269,26 @@ For unauthenticated local endpoints (e.g. Ollama):
 }
 ```
 
+To normalize with a smaller model than the one answering — both normalization
+stages (STT cleanup and TTS markdown conversion) share this client, so they use
+the same `normalize*` settings:
+
+```json
+{
+  "plugins": [
+    {
+      "package": "@renjfk/opencode-voice",
+      "options": {
+        "endpoint": "https://api.anthropic.com/v1",
+        "model": "claude-sonnet-4-6",
+        "apiKeyEnv": "ANTHROPIC_API_KEY",
+        "normalizeModel": "claude-haiku-4-5"
+      }
+    }
+  ]
+}
+```
+
 - `endpoint` _(required)_ - OpenAI-compatible base URL
 - `model` _(required)_ - model name sent to `/chat/completions`
 - `apiKeyEnv` _(optional)_ - environment variable containing the API key
@@ -278,6 +298,10 @@ For unauthenticated local endpoints (e.g. Ollama):
 - `retries` _(optional)_ - number of retry attempts for transient LLM failures
 - `tmpDir` _(optional)_ - directory used for the temporary STT recording file (default `/tmp`)
 - `sttLanguage` _(optional)_ - spoken language passed to local `whisper-cli -l` (default `auto`; any whisper.cpp language code, e.g. `en`, `zh`). Can be changed at runtime via `/stt-language`
+- `normalize` _(optional)_ - set to `false` to skip the normalization pass and use the raw transcription (STT) or the unprocessed response (TTS) instead (default `true`)
+- `normalizeModel` _(optional)_ - model used for normalization calls (default: `model`), so a small/cheap model can normalize while a larger one answers
+- `normalizeEndpoint` _(optional)_ - OpenAI-compatible base URL used for normalization calls (default: `endpoint`)
+- `normalizeApiKeyEnv` _(optional)_ - environment variable holding the API key for `normalizeEndpoint` (default: `apiKeyEnv`)
 - `trimSilence` _(optional)_ - whether to remove leading silence from recordings (default `true`). Set to `false` if your recordings are missing the first word or syllable
 
 ### Logging
