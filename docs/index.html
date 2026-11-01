@@ -283,6 +283,7 @@
       .demo-shell img {
         width: 100%;
         height: auto;
+        display: block;
       }
       .demo-caption {
         display: flex;
@@ -599,15 +600,15 @@
         .story-visual {
           position: relative;
           top: auto;
-          padding: 16px 18px;
+          padding: 12px 14px;
         }
         .demo-decoration {
           display: none;
         }
         .story-copy {
           display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 12px 24px;
+          grid-template-columns: 1fr;
+          gap: 24px 0;
           padding: 0;
         }
         .story-intro {
@@ -650,11 +651,12 @@
           display: none;
         }
         .story {
-          padding-top: 30px;
+          padding-top: 18px;
+          gap: 24px;
         }
         h1 {
-          max-width: 11ch;
-          font-size: clamp(48px, 13vw, 66px);
+          max-width: 10ch;
+          font-size: clamp(40px, 11vw, 56px);
         }
         .intro {
           font-size: 16px;
@@ -674,6 +676,7 @@
         }
         .story-step h2 {
           max-width: 13ch;
+          font-size: clamp(24px, 7vw, 34px);
         }
         .chapter-heading,
         .ecosystem-top,
@@ -1158,9 +1161,17 @@
       const demo = visual.querySelector(".demo-shell");
       const decorations = [...visual.querySelectorAll(".demo-decoration")];
       const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
+      const mobileLayout = matchMedia("(max-width: 850px)");
       let decorationFrame = 0;
 
       function updateDecorations() {
+        if (mobileLayout.matches) {
+          decorations.forEach((decoration) => {
+            decoration.style.visibility = "hidden";
+          });
+          decorationFrame = 0;
+          return;
+        }
         decorationFrame = 0;
         const stageRect = visual.getBoundingClientRect();
         const demoRect = demo.getBoundingClientRect();
@@ -1208,6 +1219,7 @@
       window.addEventListener("scroll", scheduleDecorationUpdate, { passive: true });
       window.addEventListener("resize", scheduleDecorationUpdate);
       reduceMotion.addEventListener("change", scheduleDecorationUpdate);
+      mobileLayout.addEventListener("change", scheduleDecorationUpdate);
       scheduleDecorationUpdate();
 
       if (
