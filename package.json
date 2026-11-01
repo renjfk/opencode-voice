@@ -24,6 +24,10 @@
     "voice-output",
     "whisper"
   ],
+  "homepage": "https://bojackduy.github.io/opencode-voice/",
+  "bugs": {
+    "url": "https://github.com/bojackduy/opencode-voice/issues"
+  },
   "license": "AGPL-3.0-or-later",
   "repository": {
     "type": "git",

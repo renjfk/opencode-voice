@@ -2,6 +2,8 @@
 
 > **Speak your prompts. Hear your answers.** A voice plugin for [OpenCode](https://opencode.ai/) that turns your terminal into a hands-free coding companion.
 
+**[Website and live demo → bojackduy.github.io/opencode-voice](https://bojackduy.github.io/opencode-voice/)**
+
 [![CI](https://github.com/bojackduy/opencode-voice/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bojackduy/opencode-voice/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![npm](https://img.shields.io/npm/v/@bojackduy/opencode-voice)](https://www.npmjs.com/package/@bojackduy/opencode-voice)
