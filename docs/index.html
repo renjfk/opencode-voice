@@ -171,6 +171,7 @@
         top: 96px;
         align-self: start;
         margin: 0;
+        padding: 24px 28px;
       }
 
       .button {
@@ -195,21 +196,23 @@
         color: var(--ink);
       }
       .demo-shell {
-        position: sticky;
-        top: 96px;
-        align-self: start;
+        margin: 0;
         background: #0b0e0c;
         overflow: hidden;
       }
       .demo-decoration {
         position: absolute;
-        z-index: 1;
+        z-index: 2;
+        top: 0;
+        left: 0;
         pointer-events: none;
         color: var(--green);
+        visibility: hidden;
+        transform: translate3d(var(--x, 0px), var(--y, 0px), 0) translate(-50%, -50%)
+          rotate(calc(var(--rotation, 0deg) + var(--base-rotation, 0deg)));
+        will-change: transform;
       }
       .demo-decoration-ring {
-        top: 17%;
-        right: 8%;
         width: 58px;
         aspect-ratio: 1;
         border: 1px solid currentColor;
@@ -233,16 +236,12 @@
         bottom: 3px;
       }
       .demo-decoration-diamond {
-        top: 57%;
-        left: 8%;
         width: 25px;
         aspect-ratio: 1;
         border: 1px solid currentColor;
-        transform: rotate(45deg);
+        --base-rotation: 45deg;
       }
       .demo-decoration-spark {
-        top: 39%;
-        right: 17%;
         width: 14px;
         height: 14px;
       }
@@ -255,22 +254,6 @@
       }
       .demo-decoration-spark::after {
         inset: 4px -1px;
-      }
-      @media (prefers-reduced-motion: no-preference) {
-        .demo-decoration-ring {
-          animation: demo-spin 12s linear infinite;
-        }
-        .demo-decoration-diamond {
-          animation: demo-spin 9s linear infinite reverse;
-        }
-        .demo-decoration-spark {
-          animation: demo-spin 7s linear infinite;
-        }
-        @keyframes demo-spin {
-          to {
-            transform: rotate(360deg);
-          }
-        }
       }
       .demo-head {
         display: flex;
@@ -616,6 +599,10 @@
         .story-visual {
           position: relative;
           top: auto;
+          padding: 16px 18px;
+        }
+        .demo-decoration {
+          display: none;
         }
         .story-copy {
           display: grid;
@@ -791,30 +778,29 @@
         </div>
       </section>
       <section class="story wrap" aria-label="How voice works in OpenCode">
-        <figure
-          class="story-visual demo-shell"
-          aria-label="Real animated screen capture of opencode-voice"
-        >
-          <div class="demo-head">
-            <span class="demo-dots" aria-hidden="true"><i></i><i></i><i></i></span
-            ><span>OpenCode · voice workflow</span
-            ><span class="demo-label">REAL SESSION · NO AUDIO</span>
-          </div>
-          <img
-            src="assets/voice-demo-2-redacted.gif"
-            width="1406"
-            height="986"
-            alt="Animated terminal capture: configure voice, dictate a prompt, receive an answer, and play speech."
-            fetchpriority="high"
-          />
+        <div class="story-visual">
           <span class="demo-decoration demo-decoration-ring" aria-hidden="true"></span>
           <span class="demo-decoration demo-decoration-diamond" aria-hidden="true"></span>
           <span class="demo-decoration demo-decoration-spark" aria-hidden="true"></span>
-          <figcaption class="demo-caption">
-            <span>The real workflow, captured in the terminal.</span
-            ><span class="demo-state" aria-live="polite">Dictate</span>
-          </figcaption>
-        </figure>
+          <figure class="demo-shell" aria-label="Real animated screen capture of opencode-voice">
+            <div class="demo-head">
+              <span class="demo-dots" aria-hidden="true"><i></i><i></i><i></i></span
+              ><span>OpenCode · voice workflow</span
+              ><span class="demo-label">REAL SESSION · NO AUDIO</span>
+            </div>
+            <img
+              src="assets/voice-demo-2-redacted.gif"
+              width="1406"
+              height="986"
+              alt="Animated terminal capture: configure voice, dictate a prompt, receive an answer, and play speech."
+              fetchpriority="high"
+            />
+            <figcaption class="demo-caption">
+              <span>The real workflow, captured in the terminal.</span
+              ><span class="demo-state" aria-live="polite">Dictate</span>
+            </figcaption>
+          </figure>
+        </div>
         <div class="story-copy" aria-label="Voice workflow steps">
           <p class="story-intro">
             One continuous session. Your eyes stay on the code while speech moves through the same
@@ -1167,6 +1153,63 @@
     </footer>
     <script>
       const steps = [...document.querySelectorAll(".story-step")];
+      const story = document.querySelector(".story");
+      const visual = document.querySelector(".story-visual");
+      const demo = visual.querySelector(".demo-shell");
+      const decorations = [...visual.querySelectorAll(".demo-decoration")];
+      const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
+      let decorationFrame = 0;
+
+      function updateDecorations() {
+        decorationFrame = 0;
+        const stageRect = visual.getBoundingClientRect();
+        const demoRect = demo.getBoundingClientRect();
+        const storyRect = story.getBoundingClientRect();
+        const inset = 36;
+        const left = demoRect.left - stageRect.left - inset;
+        const top = demoRect.top - stageRect.top - inset;
+        const width = demoRect.width + inset * 2;
+        const height = demoRect.height + inset * 2;
+        const perimeter = 2 * (width + height);
+        const stickyTop = Number.parseFloat(getComputedStyle(visual).top) || 0;
+        const scrollRange = Math.max(1, storyRect.height - stageRect.height - stickyTop);
+        const progress = reduceMotion.matches
+          ? 0
+          : Math.min(1, Math.max(0, -storyRect.top / scrollRange));
+
+        decorations.forEach((decoration, index) => {
+          let distance = ((progress + index / decorations.length) % 1) * perimeter;
+          let x = left;
+          let y = top;
+
+          if (distance <= width) {
+            x += distance;
+          } else if ((distance -= width) <= height) {
+            x += width;
+            y += distance;
+          } else if ((distance -= height) <= width) {
+            x += width - distance;
+            y += height;
+          } else {
+            y += height - (distance - width);
+          }
+
+          decoration.style.setProperty("--x", `${x}px`);
+          decoration.style.setProperty("--y", `${y}px`);
+          decoration.style.setProperty("--rotation", `${progress * 360}deg`);
+          decoration.style.visibility = "visible";
+        });
+      }
+
+      function scheduleDecorationUpdate() {
+        if (!decorationFrame) decorationFrame = requestAnimationFrame(updateDecorations);
+      }
+
+      window.addEventListener("scroll", scheduleDecorationUpdate, { passive: true });
+      window.addEventListener("resize", scheduleDecorationUpdate);
+      reduceMotion.addEventListener("change", scheduleDecorationUpdate);
+      scheduleDecorationUpdate();
+
       if (
         "IntersectionObserver" in window &&
         !matchMedia("(prefers-reduced-motion: reduce)").matches
