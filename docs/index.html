@@ -598,12 +598,24 @@
           grid-template-columns: 1fr;
         }
         .story-visual {
-          position: relative;
-          top: auto;
-          padding: 12px 14px;
+          position: sticky;
+          top: 64px;
+          padding: 8px 10px;
         }
         .demo-decoration {
           display: none;
+        }
+        .demo-shell .demo-head,
+        .demo-shell .demo-caption {
+          display: none;
+        }
+        .demo-shell img {
+          max-height: 150px;
+          object-fit: cover;
+          object-position: top;
+        }
+        .story-step {
+          scroll-margin-top: 220px;
         }
         .story-copy {
           display: grid;
