@@ -1345,3 +1345,30 @@ test("reply is busy the moment it is clicked, before normalization finishes", as
   release({ text: "Short reply." });
   await started;
 });
+
+test("a preempted utterance never clears the next utterance's status line", async () => {
+  const calls = { begin: 0, update: 0, clear: 0 };
+  const { audio, controller, settleTwice } = playerHost({
+    synthPcm: async () => monoPcm16(4),
+    statusHooks: {
+      status: {
+        begin: () => (calls.begin += 1),
+        update: () => (calls.update += 1),
+        clear: () => (calls.clear += 1),
+      },
+      setReader: () => {},
+    },
+  });
+  controller.speak("First reply.");
+  await settleTwice();
+  assert.equal(audio.spawns.length, 1);
+  const second = controller.speak("Second reply.");
+  const clearsAfterTakeover = calls.clear;
+  await settleTwice();
+  // A's play() settles after B mounted: it must not clear again.
+  assert.equal(calls.clear, clearsAfterTakeover, "stale utterance cleared the new status line");
+  assert.equal(audio.spawns.length, 2);
+  audio.spawns[1].emitClose(0);
+  await second;
+  assert.equal(calls.clear, clearsAfterTakeover + 1);
+});

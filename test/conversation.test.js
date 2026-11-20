@@ -622,3 +622,19 @@ test("a reply that lands after the execution event is still spoken", async () =>
   assert.equal(h.calls.speakFull, 1);
   h.controller.stop("test");
 });
+
+test("a too-short turn releases the STT processing flag and shows paused actions", async () => {
+  const h = makeHarness({ transcribe: { text: "ok" } });
+  let discards = 0;
+  h.stt.discard = () => {
+    discards += 1;
+  };
+  h.controller.onKey();
+  h.controller.onKey();
+  h.controller.onKey();
+  await tick(20);
+  assert.equal(discards, 1, "short text must be discarded or STT stays busy");
+  assert.equal(h.calls.phases.at(-1), "paused");
+  assert.equal(typeof h.calls.actions?.talk, "function");
+  h.controller.stop("test");
+});

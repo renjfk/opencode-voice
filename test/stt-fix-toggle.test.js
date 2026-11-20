@@ -29,8 +29,12 @@ function fixCtx(overrides = {}) {
       recording: () => false,
       processing: () => false,
       isCorrecting: () => isCorrecting(),
+      clearCorrection: (r) => clearCorrection(r),
       beginCorrection: (extra) => beginCorrection(extra),
-      startLoopRecording: () => void calls.push("start"),
+      startLoopRecording: () => {
+        calls.push("start");
+        return true;
+      },
       doTranscribePipeline: () => void calls.push("finish"),
       clearRecordingToast: () => {},
       kv: { get: () => null, set: () => {} },
@@ -178,4 +182,27 @@ test("Fix button shows Stop while correction records", () => {
   const active = quickActionSegments({ correcting: true }).find((s) => s.key === "correct");
   assert.equal(active.text, "[ ■  Stop  ]");
   assert.equal(active.fg, "#f87171");
+});
+
+test("Fix self-heals a correction left armed by a failed mic start", () => {
+  __setLastInsertedTextForTests("hello world");
+  const renderer = { currentFocusedRenderable: { getText: () => "hello world" } };
+  let ok = false;
+  const { ctx, calls, toasts } = fixCtx({
+    renderer,
+    startLoopRecording: () => {
+      calls.push("start");
+      return ok;
+    },
+  });
+  const fix = createCommands(ctx).find((c) => c.value === "stt.correct");
+  fix.onSelect(); // mic fails
+  assert.equal(isCorrecting(), false, "failed start must not leave correction armed");
+  assert.ok(toasts.some((t) => /Could not start the mic/.test(t)));
+  ok = true;
+  fix.onSelect();
+  assert.deepEqual(calls, ["start", "start"]);
+  assert.equal(isCorrecting(), true);
+  clearCorrection("test");
+  __setLastInsertedTextForTests(null);
 });

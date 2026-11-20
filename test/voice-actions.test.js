@@ -408,3 +408,21 @@ test("replay button stops TTS while speaking instead of replaying", () => {
   assert.equal(stopped, 1);
   assert.ok(!toasts.includes("played again"), "must not restart playback");
 });
+
+test("stopAll during streaming finalize cancels the stream, not the batch path", async () => {
+  const { api, kv } = makeCtx();
+  const stt = makeStt();
+  stt.isFinalizing = () => true;
+  const actions = createVoiceActions({
+    stt,
+    tts: makeTts(),
+    conversation: { isActive: () => false },
+    liveNotes: { isActive: () => false },
+    kv,
+    api,
+    cmds: {},
+  });
+  const cancelled = await actions.stopAll();
+  assert.deepEqual(stt._calls, ["cancelStreaming"]);
+  assert.ok(cancelled.includes("streaming"));
+});

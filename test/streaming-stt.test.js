@@ -980,3 +980,51 @@ test("pause clicked during startup is honored once streaming begins", async () =
   assert.equal(h.controller.resume(), true);
   await h.controller.dispose();
 });
+
+test("pause during startup freezes the mic immediately and keeps the paused state visible", async () => {
+  let releaseReady;
+  const readyGate = new Promise((r) => {
+    releaseReady = r;
+  });
+  const cap = createFakeCapture();
+  cap.pauses = 0;
+  cap.resumes = 0;
+  cap.pause = function () {
+    this.pauses += 1;
+  };
+  cap.resume = function () {
+    this.resumes += 1;
+  };
+  const h = createHarness({
+    capture: cap,
+    script: [{ text: "hello" }],
+    readyResult: readyGate.then(() => ({ ready: true })),
+  });
+  h.controller.start();
+  h.controller.pause();
+  assert.equal(cap.pauses, 1, "mic must freeze while the model still loads");
+  releaseReady();
+  await flushAsync();
+  assert.equal(h.events.states.at(-1), "paused", "streaming must not overwrite paused");
+  h.controller.resume();
+  assert.equal(cap.resumes, 1);
+  await h.controller.dispose();
+});
+
+test("resume during startup un-freezes the mic", async () => {
+  const cap = createFakeCapture();
+  cap.resumes = 0;
+  cap.pause = () => {};
+  cap.resume = function () {
+    this.resumes += 1;
+  };
+  const h = createHarness({
+    capture: cap,
+    readyResult: new Promise(() => {}),
+  });
+  h.controller.start();
+  h.controller.pause();
+  assert.equal(h.controller.resume(), true);
+  assert.equal(cap.resumes, 1);
+  await h.controller.cancel();
+});

@@ -215,3 +215,21 @@ test("dispose stops owned playback and refuses further plays", async () => {
   );
   assert.equal(player.play(), false);
 });
+
+test("hard pause (remote) keeps playback paused when the killed process closes", async () => {
+  const audio = fakeAudio();
+  const player = createTtsPlayer({ spawn: audio.spawn, signal: audio.signal, now: audio.now });
+  player.load({ pcm: mono16Pcm(10), sampleRate: 22050, channels: 1, bits: 16 });
+  let settled = false;
+  player.play().then(() => {
+    settled = true;
+  });
+  audio.advance(2000);
+  assert.equal(player.pauseHard(), true);
+  audio.spawns[0].emitClose(null); // SIGKILLed ssh child closes
+  await Promise.resolve();
+  assert.equal(player.getState().status, "paused");
+  assert.equal(settled, false, "a hard pause must not end the utterance");
+  assert.equal(player.resume(), true);
+  assert.equal(audio.spawns.length, 2);
+});
