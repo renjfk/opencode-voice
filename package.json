@@ -1,12 +1,11 @@
 {
   "name": "@bojackduy/opencode-voice",
-  "version": "0.12.0",
-  "description": "Speech-to-text and text-to-speech for OpenCode. Record voice prompts with whisper-cpp, hear responses via Piper TTS, with LLM normalization through any OpenAI-compatible endpoint.",
+  "version": "2.0.0",
+  "description": "Voice for OpenCode: dictate prompts (live or batch, Mac or phone mic) with whisper, clean them up with an LLM, fix them by re-speaking, and hear replies in natural Vietnamese and English with VieNeu-TTS (Piper fallback).",
   "keywords": [
     "accessibility",
     "bilingual",
     "cli",
-    "conversation",
     "dictation",
     "local-first",
     "opencode",
@@ -34,19 +33,20 @@
     "url": "git+https://github.com/bojackduy/opencode-voice.git"
   },
   "files": [
-    "index.js",
-    "tui.js",
-    "lib",
-    "vendor"
+    "index.ts",
+    "tui.ts",
+    "src",
+    "!src/**/*.test.ts",
+    "!src/testing"
   ],
   "type": "module",
-  "main": "index.js",
+  "main": "index.ts",
   "exports": {
     ".": {
-      "import": "./index.js"
+      "import": "./index.ts"
     },
     "./tui": {
-      "import": "./index.js"
+      "import": "./tui.ts"
     }
   },
   "publishConfig": {
@@ -54,12 +54,12 @@
     "provenance": true
   },
   "scripts": {
-    "lint": "npx oxlint .",
-    "fmt": "npx oxfmt --check .",
-    "fmt:fix": "npx oxfmt --write .",
-    "test": "node --test",
+    "lint": "oxlint .",
+    "fmt": "oxfmt --check .",
+    "fmt:fix": "oxfmt --write .",
+    "test": "bun test src",
     "check": "npm run lint && npm run fmt && npm run typecheck",
-    "typecheck": "tsc --noEmit -p jsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "prepack": "npm run check && npm test",
     "release:patch": "npm run check && npm test && npm version patch -m \"chore: release %s\" && git push fork master && git push fork $(git describe --tags --abbrev=0)",
     "release:minor": "npm run check && npm test && npm version minor -m \"chore: release %s\" && git push fork master && git push fork $(git describe --tags --abbrev=0)",
@@ -68,6 +68,7 @@
     "preview": "wrangler dev"
   },
   "devDependencies": {
+    "@types/bun": "^1.4.5",
     "@types/node": "^26.6.6",
     "oxfmt": "0.50.0",
     "oxlint": "1.65.0",

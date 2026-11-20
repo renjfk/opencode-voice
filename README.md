@@ -1,109 +1,108 @@
 # opencode-voice
 
-> **Speak your prompts. Hear your answers.** A voice plugin for [OpenCode](https://opencode.ai/) that turns your terminal into a hands-free coding companion.
-
-**[Website and live demo → bojackduy.github.io/opencode-voice](https://bojackduy.github.io/opencode-voice/)**
+> **Speak your prompts. Hear your answers.** A voice plugin for [OpenCode](https://opencode.ai/) v2.
 
 [![CI](https://github.com/bojackduy/opencode-voice/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bojackduy/opencode-voice/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![npm](https://img.shields.io/npm/v/@bojackduy/opencode-voice)](https://www.npmjs.com/package/@bojackduy/opencode-voice)
-[![Downloads](https://img.shields.io/npm/dm/@bojackduy/opencode-voice)](https://www.npmjs.com/package/@bojackduy/opencode-voice)
-[![GitHub stars](https://img.shields.io/github/stars/bojackduy/opencode-voice)](https://github.com/bojackduy/opencode-voice)
 
-![Demo: full voice workflow in OpenCode](assets/voice-demo-2.gif)
+![Demo: voice workflow in OpenCode](assets/voice-demo-2.gif)
 
 ## What it does
 
-- **Dictate prompts** with your voice — transcripts appear at your cursor as editable text, never auto-sent
-- **Hear responses** spoken aloud with code-aware voices that understand camelCase, diagrams, and tables
-- **Hands-free conversation mode** — speak, listen, speak again, no keyboard needed
-- **Bilingual** Vietnamese + English in a single sentence (VieNeu-TTS)
-- **Local-first** — audio never leaves your machine unless you choose
-- **Works on OpenCode v1 and v2** — one package, both hosts
+- **Dictate** into the focused text field — **live** (words appear while you speak) or **batch** (speak, then transcribe).
+- **Mac or phone mic** — local sox capture, or a phone over USB/ssh (Termux) with automatic `adb forward`.
+- **Clean-up** with any OpenCode model (fixes misheard words, punctuation), or exact whisper text.
+- **Fix** — press Fix and say the correction ("fix, not fit"); the LLM merges it into the current text.
+- **Read replies aloud** in natural Vietnamese and English with [VieNeu-TTS](https://github.com/pnnbao97/VieNeu-TTS); Piper takes over automatically if VieNeu is unavailable. Mac speakers or the phone.
+- **One status line** above the prompt shows exactly what is happening, with clickable buttons:
 
-## Quick install
+```
+● LIVE 0:07 ▃▅▄ [⏸ Pause] [■ Done] [✕ Cancel] │ ♪ 0:05/0:12 [⏸] [■]
+[● Speak] [✎ Fix] [⏎ Auto ✓] [Live] │ [▶ Reply] [↺] [Read ✓]
+```
 
-**Prerequisites:** [OpenCode](https://opencode.ai/) + `brew install whisper-cpp sox` (macOS) or see [full setup](docs/technical.md#prerequisites).
+## Install
 
-### OpenCode v2
+Prerequisites (macOS): `brew install sox whisper-cpp`, a ggml whisper model in
+`~/.local/share/whisper-cpp/` (e.g. `ggml-large-v3-turbo-q5_0.bin`), and for
+speech: Piper on `PATH` with voices in `~/.local/share/piper-voices/`, plus an
+optional VieNeu-TTS Python venv. See [docs/technical.md](docs/technical.md).
 
-Add to `~/.config/opencode/cli.json`:
+Add to `~/.config/opencode/tui.jsonc` (or `cli.json` → `plugins`):
 
-```json
+```jsonc
 {
-  "plugins": [
-    {
-      "package": "@bojackduy/opencode-voice",
-      "options": {
-        "endpoint": "https://api.anthropic.com/v1",
-        "model": "claude-haiku-4-5",
-        "apiKeyEnv": "ANTHROPIC_API_KEY"
-      }
-    }
-  ]
+  "plugin": [
+    [
+      "@bojackduy/opencode-voice",
+      {
+        "sttMode": "streaming",
+        "sttAutoSubmit": false,
+        "ttsEngine": "vieneu",
+        "ttsVieneuPython": "~/.local/share/opencode-voice/vieneu-venv/bin/python",
+        "ttsVieneuVoice": "Mai Anh",
+      },
+    ],
+  ],
 }
 ```
 
-### OpenCode v1
+The clean-up / Fix LLM defaults to the session's current model; pick another
+with `/voice-model`, or set `endpoint` + `model` + `apiKeyEnv` explicitly.
 
-```json
-{ "plugins": ["opencode-voice"] }
-```
+## Keys and commands
 
-Then `npm i -g @bojackduy/opencode-voice` and configure via `tui.json`.
+| Key         | Command                   | What it does                                                 |
+| ----------- | ------------------------- | ------------------------------------------------------------ |
+| `<leader>[` | `/stt`                    | Start dictation; press again to finish (resumes when paused) |
+| —           | `/stt-fix`                | Re-speak to correct the current text                         |
+| —           | `/stt-pause`              | Pause / resume live dictation                                |
+| `<leader>.` | `/voice-cancel`           | Cancel everything in flight                                  |
+| `<leader>]` | `/tts-speak`              | Read the last reply; press again to stop                     |
+| `<leader>0` | `/tts-replay`             | Replay the last reading                                      |
+| —           | `/tts-pause`, `/tts-stop` | Pause / stop reading                                         |
 
-That's it. Press `Ctrl+X` then `[` to start recording.
+Settings (persisted): `/stt-mode` (live/batch), `/stt-autosubmit`,
+`/stt-auto-end` (finish after 2.5 s of silence), `/stt-normalize`,
+`/stt-language`, `/stt-model`, `/stt-engine`, `/stt-mic`, `/tts-mode`
+(auto-read replies), `/tts-engine`, `/tts-voice`, `/tts-output`,
+`/voice-model`, and `/voice-status` for diagnostics.
 
-## Features
+Override keys with `"keybinds": { "stt.record": "ctrl+r", "tts.speak-last": "none" }`.
 
-| Feature                 | What you get                                                         |
-| ----------------------- | -------------------------------------------------------------------- |
-| Streaming dictation     | Live waveform + live transcript above the prompt                     |
-| Code-aware TTS          | Piper, Chatterbox, VieNeu, or Kokoro — per-sentence language routing |
-| Bilingual vi + en       | VieNeu-TTS code-switches in one utterance, 25 voices                 |
-| Hands-free conversation | Auto-silence finalize, auto-listen after reply, barge-in             |
-| Local-first             | whisper-cpp + sox + Piper on your machine                            |
-| Remote audio            | Use your phone as a mic over SSH                                     |
-| Playback controls       | Pause, rewind, forward, speed 0.75x–2x, replay                       |
-| 19 commands             | Palette + slash + leader keybinds on both hosts                      |
+## Options
 
-## Commands
+| Option                                       | Default                | Meaning                                                                                                                            |
+| -------------------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `sttMode`                                    | `"batch"`              | `"streaming"` (live) or `"batch"`                                                                                                  |
+| `sttAutoSubmit`                              | `false`                | Send the prompt right after dictation                                                                                              |
+| `sttLanguage`                                | `"auto"`               | `"auto"`, `"vi"`, `"en"`                                                                                                           |
+| `sttModel`                                   | auto                   | Path to a ggml whisper model                                                                                                       |
+| `sttCaptureCmd`                              | —                      | Phone mic argv, must print raw s16le mono PCM (e.g. `["ssh", "-p", "8022", "u0_a368@localhost", "$HOME/bin/capture.sh", "16000"]`) |
+| `sttEndpoint`, `sttApiModel`, `sttApiKeyEnv` | —                      | Optional OpenAI-compatible transcription API                                                                                       |
+| `audioSampleRate`                            | `16000`                | Capture rate                                                                                                                       |
+| `ttsEngine`                                  | `"vieneu"`             | `"vieneu"` or `"piper"`                                                                                                            |
+| `ttsVieneuPython`, `ttsVieneuVoice`          | venv path, `"Mai Anh"` | VieNeu sidecar                                                                                                                     |
+| `ttsPlayCmd`                                 | —                      | Phone speaker argv, reads raw PCM on stdin                                                                                         |
+| `endpoint`, `model`, `apiKeyEnv`             | session model          | LLM for clean-up and Fix                                                                                                           |
+| `sttPrompt`, `ttsPrompt`                     | built-in               | Override the system prompts (text)                                                                                                 |
 
-| Command               | What it does                                             |
-| --------------------- | -------------------------------------------------------- |
-| `/stt-record`         | Start / stop recording + transcribe                      |
-| `/tts-speak`          | Read last response aloud                                 |
-| `/voice-conversation` | Toggle hands-free conversation mode                      |
-| `/tts-engine`         | Switch TTS engine (Piper / Chatterbox / VieNeu / Kokoro) |
-| `/tts-vieneu-voice`   | Pick from 25 VieNeu voices                               |
-| `/tts-kokoro-voice`   | Pick a Kokoro voice                                      |
-| `/stt-mic`            | Choose microphone (local or remote)                      |
+## Privacy
 
-Full command list: [technical docs](docs/technical.md#commands).
+Audio stays on your machine unless you configure an API transcriber or a
+phone. Only the transcript is sent to the LLM for clean-up (turn it off with
+`/stt-normalize`). Stored OpenCode keys are only sent to their own provider.
+The diagnostic log (`~/.cache/opencode-voice/voice.log`, mode 0600) never
+contains transcript text.
 
-Options (under the plugin entry in `tui.json`): `ttsKokoroPython` (python binary for the Kokoro sidecar), `ttsKokoroVoice` (Kokoro voice id, default `af_heart`), alongside the existing `ttsVieneuPython` / `ttsVieneuVoice`.
+## Changes in 2.0
 
-## Landing page
-
-https://bojackduy.github.io/opencode-voice/
-
-## Documentation
-
-- [Technical setup & config](docs/technical.md) — prerequisites, install, env vars, commands reference
-- [Product positioning](POSITIONING.md) — audience, differentiators, channels
-- [Marketing & launch](MARKETING.md) — content calendar, launch drafts
-
-## Support
-
-- [GitHub Issues](https://github.com/bojackduy/opencode-voice/issues)
-- [GitHub Sponsors](https://github.com/sponsors/bojackduy)
+Rewritten in TypeScript around two small state machines (dictation, speech)
+and one status line. Conversation mode, live notes, Kokoro, Chatterbox,
+Gipformer, seek and playback speed were removed. OpenCode v1 is no longer
+supported. Existing settings carry over.
 
 ## License
 
-AGPL-3.0-or-later — free to use, modify, and self-host.
-
----
-
-_Keywords: opencode voice plugin, speech to text, text to speech, whisper, piper, tts, stt, terminal, local-first, bilingual, vietnamese, hands-free, dictation, voice coding_
-EOF
-echo "written"; wc -l README.md
+AGPL-3.0-or-later

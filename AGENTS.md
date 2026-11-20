@@ -1,37 +1,43 @@
 # AGENTS.md - opencode-voice
 
-Guidelines for AI agents working in this repository. Keep this file concise -
-only document constraints and rules an agent would get wrong without being told.
+Guidelines for AI agents working in this repository. Only constraints an agent
+would get wrong without being told.
 
 ## Architecture
 
-Single TUI plugin exported from `index.js` with logic split into `lib/`.
+OpenCode v2 TUI plugin, strict TypeScript shipped as source (Bun runs it
+inside OpenCode; no build step). `index.ts`/`tui.ts` re-export `src/entry.ts`.
+
+- `src/plugin.ts` is the composition root: builds every module and wires them.
+- `src/stt/session.ts` and `src/tts/session.ts` are the only state machines.
+  Every async step checks its operation id; every path ends in `idle`.
+- `src/ui/status.ts` renders one status line as a pure function of both
+  machines (`statusSegments`).
+- `src/host.ts` is the only place that touches the host `Context`.
+- Leaf modules (`src/audio`, `src/stt/{whisper,streaming,transcript,...}`,
+  `src/tts/{vieneu,piper,text}`, `src/llm`) take injectable `deps` and know
+  nothing about the host.
 
 ## Key invariants
 
-- Single default export: `{ id, tui }`. No server-side plugin.
-- LLM calls use the OpenAI chat completions API, not the Anthropic messages API.
-- Configuration uses `options` (static) and `api.kv` (runtime). No dotfile I/O.
-- No build step. Plain ESM JavaScript, shipped as-is.
+- Single default export `{ id, setup }` (v2 only).
+- Shared contracts live in `src/types.ts`.
+- `solid-js` / `@opentui/solid` are host-provided: import them with literal
+  dynamic `import("...")` only (variable specifiers fail to resolve at runtime);
+  their types are in `src/host-modules.d.ts`.
+- Settings use the old kv keys in storage key `"opencode-voice"`; keep them.
+- Never log transcript or speech text. Stored provider keys go only to their
+  own provider; `x-opencode-session` only to opencode.ai hosts.
 
 ## Scripts
 
 ```bash
-npm run test         # node --test
-npm run check        # lint + fmt
-npm run lint         # oxlint .
-npm run fmt          # oxfmt --check .
+npm test             # bun test src
+npm run check        # oxlint + oxfmt --check + tsc --noEmit
 npm run fmt:fix      # oxfmt --write .
 ```
 
-Verify changes: `npm run check` with zero errors.
+Verify changes: `npm run check` and `npm test`, zero errors. Tests use fakes in
+`src/testing/fakes.ts`; never spawn real audio, binaries or network in tests.
 
-CI runs on every PR and push to main (lint, test, build). See
-RELEASE_PROCESS.md for release steps.
-
-## Code style
-
-- **ESM only** - `import`/`export`, `"type": "module"` in package.json
-- **No build step** - no bundler. TypeScript is used only as a dev-time checker (`tsc --checkJs`), never as a build or emitted output
-- **Formatting** - enforced by oxfmt
-- **Linting** - enforced by oxlint
+See RELEASE_PROCESS.md for releases.

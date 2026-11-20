@@ -9,17 +9,17 @@ Use this skill to produce actual STT normalization benchmark numbers. Keep the b
 
 ## Steps
 
-1. Read `lib/stt.js` and copy the exact `STT_SYSTEM_PROMPT` from the tool plus user prompt format. Do not rely on a stale prompt from memory or from this skill if the source file differs:
+1. Read `src/llm/prompts.ts` and copy the exact `STT_NORMALIZE_PROMPT` (and `buildSttUser`) from the tool plus user prompt format. Do not rely on a stale prompt from memory or from this skill if the source file differs:
 
 ```js
 prompt = `Clean up this speech-to-text transcription:\n\n${rawText}`;
 ```
 
-2. Read `lib/llm-client.js` to confirm the request body fields and supported options.
+2. Read `src/llm/client.ts` to confirm the request body fields and supported options.
 
 3. Create a temporary benchmark script outside the repo.
 
-Use this working script as the starting point and edit endpoints/models as needed. Before running it, replace `STT_SYSTEM_PROMPT` with the current prompt copied from `lib/stt.js`:
+Use this working script as the starting point and edit endpoints/models as needed. Before running it, replace `STT_SYSTEM_PROMPT` with the current prompt copied from `src/llm/prompts.ts`:
 
 ```js
 import { performance } from "node:perf_hooks";

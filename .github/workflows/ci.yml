@@ -19,6 +19,8 @@ jobs:
         with:
           node-version: 24
 
+      - uses: oven-sh/setup-bun@v2
+
       - run: npm install
 
       - name: Check formatting
@@ -26,6 +28,9 @@ jobs:
 
       - name: Lint
         run: npx oxlint .
+
+      - name: Typecheck
+        run: npx tsc --noEmit -p tsconfig.json
 
   test:
     name: Test
@@ -38,10 +43,12 @@ jobs:
         with:
           node-version: 24
 
+      - uses: oven-sh/setup-bun@v2
+
       - run: npm install
 
       - name: Run unit tests
-        run: npm test
+        run: bun test src
 
   build:
     name: Build
@@ -53,6 +60,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+
+      - uses: oven-sh/setup-bun@v2
 
       - run: npm install
 
