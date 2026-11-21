@@ -1,6 +1,6 @@
 {
   "name": "@bojackduy/opencode-voice",
-  "version": "2.1.5",
+  "version": "2.1.6",
   "description": "Voice for OpenCode: dictate prompts (live or batch, Mac or phone mic) with whisper, clean them up with an LLM, fix them by re-speaking, and hear replies in natural Vietnamese and English with VieNeu-TTS (Piper fallback).",
   "keywords": [
     "accessibility",
