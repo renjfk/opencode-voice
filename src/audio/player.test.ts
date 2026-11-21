@@ -307,3 +307,96 @@ describe("helpers", () => {
     expect(remoteRate(["ssh", "h", "1"], 22050)).toBe(22050);
   });
 });
+
+describe("speed and seek", () => {
+  test("speed respawns sox at the current position with tempo, position advances faster", async () => {
+    const h = harness({ kind: "local" });
+    void h.player.play(WAV);
+    h.advance(500);
+    h.player.setRate(1.5);
+    const sox = h.byCmd("sox");
+    expect(sox.length).toBe(2);
+    expect(sox[0]?.signals).toContain("SIGKILL");
+    expect(sox[1]?.args.join(" ")).toContain("trim 0.500 tempo -s 1.5");
+    h.advance(400);
+    expect(h.player.positionSec()).toBeCloseTo(1.1, 5);
+    expect(h.player.rate()).toBe(1.5);
+  });
+
+  test("the killed process's close never ends the clip after a speed change", async () => {
+    const h = harness({ kind: "local" });
+    const t = track(h.player.play(WAV));
+    h.player.setRate(2);
+    h.byCmd("sox")[0]?.close(null, "SIGKILL");
+    await tick();
+    expect(t.result).toBeNull();
+    expect(h.player.status()).toBe("playing");
+  });
+
+  test("speed change while paused applies on resume, from the paused position", () => {
+    const h = harness({ kind: "local" });
+    void h.player.play(WAV);
+    h.advance(800);
+    h.player.pause();
+    h.player.setRate(0.75);
+    expect(h.player.status()).toBe("paused");
+    expect(h.byCmd("sox").length).toBe(1);
+    h.player.resume();
+    const sox = h.byCmd("sox");
+    expect(sox.length).toBe(2);
+    expect(sox[1]?.args.join(" ")).toContain("trim 0.800 tempo -s 0.75");
+  });
+
+  test("seek forward/back clamps at 0 and keeps playing", () => {
+    const h = harness({ kind: "local" });
+    void h.player.play(WAV);
+    h.advance(1000);
+    expect(h.player.seek(h.player.positionSec() - 5)).toBe(true);
+    expect(h.byCmd("sox")[1]?.args.includes("trim")).toBe(false); // clamped to 0
+    expect(h.player.positionSec()).toBe(0);
+    h.player.seek(1.25);
+    expect(h.byCmd("sox")[2]?.args.join(" ")).toContain("trim 1.250");
+  });
+
+  test("seek past the end finishes the clip as ended", async () => {
+    const h = harness({ kind: "local" });
+    const t = track(h.player.play(WAV));
+    h.player.seek(10);
+    await tick();
+    expect(t.result).toBe("ended");
+    expect(h.player.status()).toBe("idle");
+  });
+
+  test("seek while paused stays paused and resumes at the new spot", () => {
+    const h = harness({ kind: "local" });
+    void h.player.play(WAV);
+    h.player.pause();
+    h.player.seek(1.5);
+    expect(h.player.status()).toBe("paused");
+    expect(h.player.positionSec()).toBe(1.5);
+    h.player.resume();
+    expect(h.byCmd("sox")[1]?.args.join(" ")).toContain("trim 1.500");
+  });
+
+  test("remote: speed uses ffmpeg atempo and silences the phone before respawning", async () => {
+    const h = harness({ kind: "remote", command: REMOTE });
+    void h.player.play(WAV);
+    h.player.setRate(1.25);
+    expect(h.kills.length).toBe(1);
+    expect(h.byCmd("ffmpeg").length).toBe(1); // waits for the remote kill
+    h.resolveKills();
+    await tick();
+    const ff = h.byCmd("ffmpeg");
+    expect(ff.length).toBe(2);
+    expect(ff[1]?.args.join(" ")).toContain("-af atempo=1.25");
+  });
+
+  test("rate is clamped and kept across clips; nothing loaded = seek false", () => {
+    const h = harness({ kind: "local" });
+    expect(h.player.seek(1)).toBe(false);
+    h.player.setRate(9);
+    expect(h.player.rate()).toBe(2);
+    void h.player.play(WAV);
+    expect(h.byCmd("sox")[0]?.args.join(" ")).toContain("tempo -s 2");
+  });
+});

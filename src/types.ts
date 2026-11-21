@@ -84,7 +84,25 @@ export interface Player {
   status(): PlayerStatus;
   positionSec(): number;
   durationSec(): number;
+  /**
+   * Jump to an absolute position in the current clip (clamped at 0). A
+   * position at or past the end finishes the clip ("ended"). Keeps the
+   * paused state. False when nothing is loaded.
+   */
+  seek(sec: number): boolean;
+  /** Playback speed (pitch kept). Applies immediately, also while paused. */
+  setRate(rate: number): void;
+  rate(): number;
   dispose(): void;
+}
+
+export const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 1.75, 2] as const;
+export const RATE_MIN = 0.5;
+export const RATE_MAX = 2;
+
+export function clampRate(rate: number): number {
+  if (!Number.isFinite(rate)) return 1;
+  return Math.round(Math.min(RATE_MAX, Math.max(RATE_MIN, rate)) * 100) / 100;
 }
 
 // ---------------------------------------------------------------- stt

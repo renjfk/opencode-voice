@@ -1,11 +1,12 @@
 // TTS state machine: prepare text → synthesize part by part (VieNeu, Piper
-// fallback) → play, prefetching the next part while the current one plays.
+// fallback) ahead of playback → play the clips in order. Seeking moves within
+// a clip and across clip boundaries (rewind into the previous part).
 // One operation id guards every async step; stop/new speech invalidates the
 // old one so stale audio can never play or clear the status line.
 import type { Host } from "../host.ts";
 import type { Settings } from "../config.ts";
 import type { Llm, Logger, Player, SpeechSegment, Synth, SynthName } from "../types.ts";
-import { SynthError, errorMessage, isAbortError } from "../types.ts";
+import { PLAYBACK_RATES, SynthError, clampRate, errorMessage, isAbortError } from "../types.ts";
 
 export type TtsPhase =
   | { readonly kind: "idle" }
@@ -23,6 +24,8 @@ export interface TtsView {
   readonly durationSec: number;
   readonly engine: SynthName | null;
   readonly canReplay: boolean;
+  /** Playback speed, e.g. 1.25. */
+  readonly rate: number;
 }
 
 export interface TtsDeps {
@@ -39,6 +42,8 @@ export interface TtsDeps {
   mergeForEngine(segs: SpeechSegment[], engineHandlesMixed: boolean): SpeechSegment[];
   synth(name: SynthName): Synth;
   player: Player;
+  /** Duration of a WAV clip in seconds (for seeking across clips). */
+  clipDuration(wav: Buffer): number;
   /** True while the user is dictating: auto-read must not talk over them. */
   isRecording(): boolean;
   clock?: { now(): number };
@@ -53,6 +58,12 @@ export interface TtsMachine {
   pause(): boolean;
   stop(): boolean;
   replay(): boolean;
+  /** Jump by `deltaSec` (negative = back). False when nothing is playing. */
+  seekBy(deltaSec: number): boolean;
+  /** Set the speed (saved). Applies right away. */
+  setRate(rate: number): void;
+  /** Next preset speed, wrapping: 0.75 → 1 → 1.25 → 1.5 → 1.75 → 2 → 0.75. */
+  cycleRate(): number;
   view(): TtsView;
   isBusy(): boolean;
   onChange(cb: () => void): () => void;
@@ -74,6 +85,7 @@ export function createTtsMachine(deps: TtsDeps): TtsMachine {
   let lastFallbackNotice = 0;
   let disposed = false;
   const listeners = new Set<() => void>();
+  player.setRate(settings.ttsRate());
 
   const emit = (): void => {
     for (const cb of listeners) {
@@ -94,6 +106,8 @@ export function createTtsMachine(deps: TtsDeps): TtsMachine {
       abort?.abort();
     } catch {}
     abort = null;
+    jump = null;
+    current = null;
     player.stop();
     engine = null;
     if (wasBusy) setPhase({ kind: "idle" });
@@ -165,24 +179,112 @@ export function createTtsMachine(deps: TtsDeps): TtsMachine {
     }
     setPhase({ kind: "preparing", step: "synthesizing", since: now() });
     logger.log("tts", `speak parts=${segs.length} chars=${speech.length}`);
-    const wavs: Buffer[] = [];
-    try {
-      let next: Promise<Buffer[]> | null = synthesize(segs[0] as SpeechSegment, signal);
-      for (let i = 0; i < segs.length; i++) {
-        const current: Buffer[] = await (next as Promise<Buffer[]>);
-        if (myOp !== op) return;
-        // Prefetch the next part while this one plays.
-        next = i + 1 < segs.length ? synthesize(segs[i + 1] as SpeechSegment, signal) : null;
-        next?.catch(() => {}); // surfaced when awaited
-        for (const wav of current) {
-          wavs.push(wav);
-          setPhase({ kind: "playing", part: i + 1, parts: segs.length });
-          const end = await player.play(wav);
-          if (myOp !== op || end === "stopped") {
-            lastWavs = wavs; // what was heard so far stays replayable
-            return;
-          }
+    const list = newPlaylist(segs.length);
+    // Producer: synthesize every part ahead of playback, in order.
+    void (async () => {
+      try {
+        for (const seg of segs) {
+          if (myOp !== op) return;
+          const wavs = await synthesize(seg, signal);
+          if (myOp !== op) return;
+          list.add(wavs);
         }
+      } catch (err) {
+        list.fail(err);
+        return;
+      }
+      list.done();
+    })();
+    await playList(myOp, list);
+  }
+
+  // ------------------------------------------------------------ playlist
+
+  interface Playlist {
+    readonly clips: Buffer[];
+    /** Expected number of parts while synthesis runs (for the "2/3" label). */
+    readonly expected: number;
+    finished: boolean;
+    error: unknown;
+    add(wavs: Buffer[]): void;
+    done(): void;
+    fail(err: unknown): void;
+    /** Resolves when clip `idx` exists or synthesis ended. */
+    wait(idx: number): Promise<void>;
+  }
+
+  function newPlaylist(expected: number, clips: Buffer[] = [], finished = false): Playlist {
+    let wake: (() => void) | null = null;
+    const notify = (): void => {
+      const w = wake;
+      wake = null;
+      w?.();
+    };
+    const pl: Playlist = {
+      clips,
+      expected,
+      finished,
+      error: null,
+      add(wavs) {
+        pl.clips.push(...wavs);
+        notify();
+      },
+      done() {
+        pl.finished = true;
+        notify();
+      },
+      fail(err) {
+        pl.error = err;
+        pl.finished = true;
+        notify();
+      },
+      wait(idx) {
+        if (idx < pl.clips.length || pl.finished) return Promise.resolve();
+        return new Promise((r) => {
+          wake = r;
+        });
+      },
+    };
+    return pl;
+  }
+
+  /** Where playback must continue after a seek crossed a clip boundary. */
+  let jump: { idx: number; offset: number } | null = null;
+  let current: { list: Playlist; idx: number } | null = null;
+
+  async function playList(myOp: number, list: Playlist): Promise<void> {
+    let idx = 0;
+    let offset = 0;
+    try {
+      for (;;) {
+        if (idx >= list.clips.length && !list.finished) {
+          await list.wait(idx);
+          if (myOp !== op) return;
+        }
+        const wav = list.clips[idx];
+        if (!wav) {
+          if (list.error && !isAbortError(list.error)) throw list.error;
+          break; // all parts played
+        }
+        current = { list, idx };
+        const parts = Math.max(list.expected, list.clips.length);
+        const pausedBefore = phase.kind === "paused";
+        // Load the clip before announcing it, so the status line never shows
+        // the previous clip's position under the new part number.
+        const ended = player.play(wav);
+        if (offset > 0) player.seek(offset);
+        if (pausedBefore) player.pause(); // keep a paused session paused across a jump
+        setPhase({ kind: pausedBefore ? "paused" : "playing", part: idx + 1, parts });
+        offset = 0;
+        const end = await ended;
+        if (myOp !== op) return;
+        if (jump) {
+          ({ idx, offset } = jump);
+          jump = null;
+          continue;
+        }
+        if (end === "stopped") break;
+        idx += 1;
       }
     } catch (err) {
       if (myOp !== op) return;
@@ -190,13 +292,16 @@ export function createTtsMachine(deps: TtsDeps): TtsMachine {
         host.toast(`Speech failed: ${errorMessage(err)}`, "error", 6000);
         logger.log("tts", `speech failed: ${errorMessage(err)}`, "error");
       }
-      if (wavs.length) lastWavs = wavs;
-      setPhase({ kind: "idle" });
-      return;
+    } finally {
+      // Whatever was synthesized stays replayable, also after a stop.
+      if (list.clips.length) lastWavs = [...list.clips];
+      if (myOp === op) {
+        current = null;
+        setPhase({ kind: "idle" });
+      } else {
+        emit(); // canReplay changed
+      }
     }
-    if (myOp !== op) return;
-    lastWavs = wavs;
-    setPhase({ kind: "idle" });
   }
 
   function speak(text: string, normalize: boolean): void {
@@ -279,20 +384,42 @@ export function createTtsMachine(deps: TtsDeps): TtsMachine {
       const wavs = lastWavs;
       stopInternal();
       const myOp = op;
-      void (async () => {
-        try {
-          for (let i = 0; i < wavs.length; i++) {
-            if (myOp !== op) return;
-            setPhase({ kind: "playing", part: i + 1, parts: wavs.length });
-            const end = await player.play(wavs[i] as Buffer);
-            if (myOp !== op || end === "stopped") return;
-          }
-        } catch (err) {
-          if (myOp === op) host.toast(`Replay failed: ${errorMessage(err)}`, "error");
-        }
-        if (myOp === op) setPhase({ kind: "idle" });
-      })();
+      void playList(myOp, newPlaylist(wavs.length, [...wavs], true));
       return true;
+    },
+    seekBy(deltaSec) {
+      if ((phase.kind !== "playing" && phase.kind !== "paused") || !current) return false;
+      const { list, idx } = current;
+      const target = player.positionSec() + deltaSec;
+      if (target < 0 && idx > 0) {
+        // Rewind into the previous part(s).
+        let back = -target;
+        let i = idx - 1;
+        let dur = deps.clipDuration(list.clips[i] as Buffer);
+        while (back > dur && i > 0) {
+          back -= dur;
+          i -= 1;
+          dur = deps.clipDuration(list.clips[i] as Buffer);
+        }
+        jump = { idx: i, offset: Math.max(0, dur - back) };
+        player.seek(Number.POSITIVE_INFINITY); // ends this clip; the loop jumps
+        return true;
+      }
+      // Within the clip; past its end the player finishes it and the next
+      // part starts from its beginning.
+      return player.seek(Math.max(0, target));
+    },
+    setRate(rate) {
+      const r = clampRate(rate);
+      settings.setTtsRate(r);
+      player.setRate(r);
+      emit();
+    },
+    cycleRate() {
+      const cur = player.rate();
+      const next = PLAYBACK_RATES.find((r) => r > cur + 0.001) ?? PLAYBACK_RATES[0];
+      this.setRate(next);
+      return next;
     },
     view() {
       return {
@@ -301,6 +428,7 @@ export function createTtsMachine(deps: TtsDeps): TtsMachine {
         durationSec: phase.kind === "playing" || phase.kind === "paused" ? player.durationSec() : 0,
         engine,
         canReplay: lastWavs.length > 0,
+        rate: player.rate(),
       };
     },
     isBusy: () => phase.kind !== "idle",

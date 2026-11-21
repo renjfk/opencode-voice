@@ -24,6 +24,7 @@ const idleTts: TtsView = {
   durationSec: 0,
   engine: null,
   canReplay: false,
+  rate: 1,
 };
 const base: StatusInput = {
   stt: idleStt,
@@ -40,7 +41,7 @@ const texts = (i: StatusInput) =>
 
 describe("status segments", () => {
   test("idle shows the main buttons", () => {
-    expect(texts(base)).toBe("[● Speak] [✎ Fix] [⏎ Auto ✓] [Live] │ [▶ Reply] [Read ✗]");
+    expect(texts(base)).toBe("[● Speak] [✎ Fix] [⏎ Auto ✓] [Live] │ [▶ Reply] [1x] [Read ✗]");
   });
 
   test("recording shows timer, meter, done and cancel", () => {
@@ -119,11 +120,11 @@ describe("status segments", () => {
         durationSec: 12,
         engine: "piper",
         canReplay: true,
+        rate: 1.25,
       },
     });
     expect(s).toContain("♪ 0:05/0:12 2/3 piper");
-    expect(s).toContain("[⏸]");
-    expect(s).toContain("[■]");
+    expect(s).toContain("[«5] [⏸] [5»] [1.25x] [■]");
   });
 
   test("helpers", () => {

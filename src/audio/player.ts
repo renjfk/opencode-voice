@@ -3,8 +3,9 @@
 // One owned process at a time. Every action that replaces or kills the
 // process bumps `gen`; a process's close event only counts when its token
 // still equals `gen`, so a killed/stale process can never end the current
-// utterance. Position is clock-based.
+// utterance. Position is clock-based (elapsed wall time x speed).
 
+import { clampRate } from "../types.ts";
 import type { Logger, PlayEnd, Player, PlayerOutput, PlayerStatus } from "../types.ts";
 import { defaultSpawn } from "./mic.ts";
 import type { ChildProc, SpawnFn } from "./mic.ts";
@@ -53,14 +54,16 @@ export function remoteRate(command: readonly string[], fallback: number): number
   return Number.isInteger(n) && n >= 8000 && n <= 192000 ? n : fallback;
 }
 
-export function localPlayArgs(offsetSec: number): string[] {
+export function localPlayArgs(offsetSec: number, speed = 1): string[] {
   // Small buffer so SIGSTOP lands close to the audible position.
   const argv = ["-q", "--buffer", "1024", "-t", "wav", "-", "-d"];
   if (offsetSec > 0) argv.push("trim", offsetSec.toFixed(3));
+  // tempo -s: speech-tuned time stretch that keeps the voice's pitch.
+  if (speed !== 1) argv.push("tempo", "-s", String(speed));
   return argv;
 }
 
-export function ffmpegArgs(offsetSec: number, rate: number): string[] {
+export function ffmpegArgs(offsetSec: number, rate: number, speed = 1): string[] {
   return [
     "-hide_banner",
     "-loglevel",
@@ -68,6 +71,7 @@ export function ffmpegArgs(offsetSec: number, rate: number): string[] {
     ...(offsetSec > 0 ? ["-ss", offsetSec.toFixed(3)] : []),
     "-i",
     "pipe:0",
+    ...(speed !== 1 ? ["-af", `atempo=${speed}`] : []),
     "-f",
     "s16le",
     "-acodec",
@@ -131,6 +135,7 @@ export function createPlayer(getOutput: () => PlayerOutput, deps: PlayerDeps = {
   let status: PlayerStatus = "idle";
   let baseSec = 0;
   let anchorMs = 0;
+  let speed = 1;
   let gen = 0;
   let proc: Owned | null = null;
   let pending: Pending | null = null;
@@ -142,7 +147,7 @@ export function createPlayer(getOutput: () => PlayerOutput, deps: PlayerDeps = {
 
   function positionSec(): number {
     if (status === "playing" && proc) {
-      return Math.min(totalSec, baseSec + Math.max(0, now() - anchorMs) / 1000);
+      return Math.min(totalSec, baseSec + (Math.max(0, now() - anchorMs) / 1000) * speed);
     }
     return Math.min(totalSec, baseSec);
   }
@@ -240,7 +245,9 @@ export function createPlayer(getOutput: () => PlayerOutput, deps: PlayerDeps = {
         if (bin === undefined) throw new Error("empty remote playback command");
         child = spawn(bin, rest, { stdio: ["pipe", "ignore", "pipe"] });
       } else {
-        child = spawn("sox", localPlayArgs(offsetSec), { stdio: ["pipe", "ignore", "pipe"] });
+        child = spawn("sox", localPlayArgs(offsetSec, speed), {
+          stdio: ["pipe", "ignore", "pipe"],
+        });
       }
     } catch (err) {
       queueMicrotask(() => onEnd(token, spawnErr(binOf, err)));
@@ -252,7 +259,9 @@ export function createPlayer(getOutput: () => PlayerOutput, deps: PlayerDeps = {
     const owned: Owned = { kind: out.kind, child, ff: null };
     proc = owned;
     if (out.kind === "remote") remoteLive = out.command;
-    log(`spawn kind=${out.kind} offset=${offsetSec.toFixed(2)} bytes=${audio.length}`);
+    log(
+      `spawn kind=${out.kind} offset=${offsetSec.toFixed(2)} speed=${speed} bytes=${audio.length}`,
+    );
 
     child.stderr?.on("data", (c: Buffer | string) => {
       stderrTail = (stderrTail + c.toString()).slice(-400);
@@ -281,7 +290,9 @@ export function createPlayer(getOutput: () => PlayerOutput, deps: PlayerDeps = {
     // Remote: convert to raw s16le at the remote's rate, seeking with -ss.
     const rate = remoteRate(out.command, deps.remoteSampleRate ?? 16000);
     try {
-      ff = spawn("ffmpeg", ffmpegArgs(offsetSec, rate), { stdio: ["pipe", "pipe", "pipe"] });
+      ff = spawn("ffmpeg", ffmpegArgs(offsetSec, rate, speed), {
+        stdio: ["pipe", "pipe", "pipe"],
+      });
     } catch (err) {
       failed = spawnErr("ffmpeg", err);
       hardKill(child);
@@ -302,7 +313,51 @@ export function createPlayer(getOutput: () => PlayerOutput, deps: PlayerDeps = {
     ff.stdin?.end(audio);
   }
 
+  /**
+   * Restart output at `offsetSec` with the current speed, keeping the state:
+   * playing respawns now, paused drops the frozen process so resume
+   * respawns at the new offset (a SIGSTOPped sox cannot change speed/offset).
+   */
+  function restartAt(offsetSec: number): void {
+    if (status === "playing") {
+      killLocal();
+      killRemote();
+      startAt(offsetSec);
+      return;
+    }
+    gen += 1;
+    killLocal();
+    killRemote();
+    baseSec = offsetSec;
+  }
+
   return {
+    seek(sec) {
+      if (disposed || !wav || status === "idle") return false;
+      if (!(sec < totalSec)) {
+        // Past the end: finish this clip so the caller moves on.
+        gen += 1;
+        killLocal();
+        killRemote();
+        status = "idle";
+        baseSec = totalSec;
+        settle("ended");
+        return true;
+      }
+      restartAt(Math.max(0, sec));
+      return true;
+    },
+
+    setRate(next) {
+      const r = clampRate(next);
+      if (r === speed) return;
+      const at = positionSec();
+      speed = r;
+      if (!disposed && wav && status !== "idle") restartAt(at);
+    },
+
+    rate: () => speed,
+
     play(input) {
       if (disposed) return Promise.resolve("stopped");
       const dur = wavDurationSec(input);

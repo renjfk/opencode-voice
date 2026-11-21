@@ -13,6 +13,11 @@ export interface CommandActions {
   ttsPause(): void;
   ttsStop(): void;
   ttsReplay(): void;
+  ttsBack(): void;
+  ttsForward(): void;
+  ttsFaster(): void;
+  ttsSlower(): void;
+  pickRate(): Promise<void>;
   toggleAutoSubmit(): void;
   toggleAutoEnd(): void;
   toggleTtsAuto(): void;
@@ -34,6 +39,8 @@ const DEFAULT_BINDS: Record<string, string> = {
   "tts.speak-last": "<leader>]",
   "voice.cancel": "<leader>.",
   "tts.replay": "<leader>0",
+  "tts.rewind": "<leader>-",
+  "tts.forward": "<leader>=",
 };
 
 export function buildCommands(
@@ -71,6 +78,11 @@ export function buildCommands(
     cmd("tts.pause", "Voice: pause / resume reading", "tts-pause", a.ttsPause),
     cmd("tts.stop", "Voice: stop reading", "tts-stop", a.ttsStop),
     cmd("tts.replay", "Voice: replay the last reading", "tts-replay", a.ttsReplay),
+    cmd("tts.rewind", "Voice: back 5 seconds", "tts-rewind", a.ttsBack),
+    cmd("tts.forward", "Voice: forward 5 seconds", "tts-forward", a.ttsForward),
+    cmd("tts.faster", "Voice: read faster", "tts-faster", a.ttsFaster),
+    cmd("tts.slower", "Voice: read slower", "tts-slower", a.ttsSlower),
+    cmd("tts.rate", "Voice: reading speed", "tts-rate", a.pickRate),
     cmd(
       "stt.autosubmit",
       "Voice: toggle auto-submit after dictation",
@@ -131,4 +143,13 @@ export const TTS_ENGINE_OPTIONS: readonly SelectOption<TtsEngine>[] = [
     description: "Natural Vietnamese + English voice (falls back to Piper)",
   },
   { title: "Piper", value: "piper", description: "Fast, lightweight, more robotic" },
+];
+
+export const RATE_OPTIONS: readonly SelectOption<number>[] = [
+  { title: "0.75x", value: 0.75 },
+  { title: "1x (normal)", value: 1 },
+  { title: "1.25x", value: 1.25 },
+  { title: "1.5x", value: 1.5 },
+  { title: "1.75x", value: 1.75 },
+  { title: "2x", value: 2 },
 ];

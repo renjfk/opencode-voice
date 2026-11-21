@@ -207,6 +207,9 @@ export const flush = async (n = 6): Promise<void> => {
 
 export interface FakePlayer extends Player {
   plays: Buffer[];
+  seeks: number[];
+  rateValue: number;
+  pos: number;
   finish(end?: PlayEnd): void;
 }
 
@@ -240,8 +243,25 @@ export function fakePlayer(): FakePlayer {
       r?.("stopped");
     },
     status: () => status,
-    positionSec: () => 1,
+    seeks: [],
+    rateValue: 1,
+    positionSec: () => p.pos,
+    pos: 1,
     durationSec: () => 2,
+    seek(sec) {
+      if (status === "idle") return false;
+      p.seeks.push(sec);
+      if (sec >= 2) {
+        p.finish("ended");
+        return true;
+      }
+      p.pos = Math.max(0, sec);
+      return true;
+    },
+    setRate(r) {
+      p.rateValue = r;
+    },
+    rate: () => p.rateValue,
     dispose() {},
     finish(end = "ended") {
       status = "idle";

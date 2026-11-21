@@ -47,6 +47,7 @@ function harness(
     mergeForEngine: (segs) => segs,
     synth: (n: SynthName) => (n === "vieneu" ? vieneu : piper),
     player,
+    clipDuration: () => 2,
     isRecording: () => o.recording === true,
   });
   return {
@@ -241,4 +242,79 @@ test("auto-read retries once when the reply text lands after the idle event", as
   await new Promise((r) => setTimeout(r, 1600));
   await flush();
   expect(h.player.plays.length).toBe(1);
+});
+
+describe("speed and seeking", () => {
+  test("saved speed is applied to the player at start and changes are saved", () => {
+    const h = harness();
+    expect(h.player.rate()).toBe(1);
+    h.machine.setRate(1.5);
+    expect(h.player.rateValue).toBe(1.5);
+    expect(h.settings.ttsRate()).toBe(1.5);
+    expect(h.machine.view().rate).toBe(1.5);
+    expect(h.machine.cycleRate()).toBe(1.75);
+    h.machine.setRate(2);
+    expect(h.machine.cycleRate()).toBe(0.75); // wraps
+    h.machine.setRate(9);
+    expect(h.machine.view().rate).toBe(2); // clamped
+  });
+
+  test("seek within a part moves the player", async () => {
+    const h = harness();
+    expect(h.machine.seekBy(5)).toBe(false); // nothing playing
+    h.machine.toggle();
+    await flush();
+    h.player.pos = 1;
+    expect(h.machine.seekBy(0.5)).toBe(true);
+    expect(h.player.seeks).toEqual([1.5]);
+    h.machine.seekBy(-5);
+    expect(h.player.seeks.at(-1)).toBe(0); // first part: clamp at 0
+  });
+
+  test("forward past the end of a part continues with the next part", async () => {
+    const h = harness();
+    h.machine.toggle();
+    await flush();
+    h.machine.seekBy(5);
+    await flush();
+    expect(h.player.plays.map(String)).toEqual(["vieneu:Xin chào.", "vieneu:Hello world."]);
+  });
+
+  test("rewind past the start of a part jumps back into the previous part", async () => {
+    const h = harness();
+    h.machine.toggle();
+    await flush();
+    h.player.finish(); // part 1 done
+    await flush();
+    expect(h.machine.view().phase).toMatchObject({ part: 2 });
+    h.player.pos = 1; // 1s into part 2; parts are 2s long
+    h.machine.seekBy(-1.5);
+    await flush();
+    // Back to part 1 at 2 - 0.5 = 1.5s.
+    expect(h.player.plays.map(String)).toEqual([
+      "vieneu:Xin chào.",
+      "vieneu:Hello world.",
+      "vieneu:Xin chào.",
+    ]);
+    expect(h.player.seeks.at(-1)).toBe(1.5);
+    expect(h.machine.view().phase).toMatchObject({ kind: "playing", part: 1 });
+    // And it keeps going in order afterwards.
+    h.player.finish();
+    await flush();
+    expect(String(h.player.plays.at(-1))).toBe("vieneu:Hello world.");
+  });
+
+  test("rewinding while paused stays paused", async () => {
+    const h = harness();
+    h.machine.toggle();
+    await flush();
+    h.player.finish();
+    await flush();
+    h.machine.pause();
+    h.player.pos = 0.2;
+    h.machine.seekBy(-1);
+    await flush();
+    expect(h.machine.view().phase).toMatchObject({ kind: "paused", part: 1 });
+    expect(h.player.status()).toBe("paused");
+  });
 });

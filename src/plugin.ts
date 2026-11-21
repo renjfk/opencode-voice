@@ -16,7 +16,7 @@ import {
 } from "./llm/prompts.ts";
 import { listInputDevices, openMic } from "./audio/mic.ts";
 import { createPlayer } from "./audio/player.ts";
-import { pcmRms, wrapPcm } from "./audio/wav.ts";
+import { pcmRms, wavDurationSec, wrapPcm } from "./audio/wav.ts";
 import { createWhisperTranscriber, defaultWhisperModel, findWhisperModels } from "./stt/whisper.ts";
 import { createApiTranscriber } from "./stt/api-transcriber.ts";
 import { transcribeLong } from "./stt/long.ts";
@@ -31,15 +31,23 @@ import { mountStatus, type Action, type StatusMount } from "./ui/status.ts";
 import {
   LANGUAGE_OPTIONS,
   NORMALIZE_OPTIONS,
+  RATE_OPTIONS,
   STT_MODE_OPTIONS,
   TTS_ENGINE_OPTIONS,
   buildCommands,
   type CommandActions,
 } from "./commands.ts";
 import type { Logger, Synth, SynthName, Transcriber } from "./types.ts";
-import { errorMessage } from "./types.ts";
+import { PLAYBACK_RATES, errorMessage } from "./types.ts";
 
 const IDLE_RELEASE_MS = 10 * 60_000;
+
+/** Next preset speed up (+1) or down (-1), stopping at the ends. */
+export function nextRate(cur: number, dir: 1 | -1): number {
+  const rates = [...PLAYBACK_RATES];
+  if (dir > 0) return rates.find((r) => r > cur + 0.001) ?? (rates[rates.length - 1] as number);
+  return [...rates].reverse().find((r) => r < cur - 0.001) ?? (rates[0] as number);
+}
 
 export interface PluginHandle {
   readonly stt: SttMachine;
@@ -123,10 +131,12 @@ export async function setupPlugin(
     return s;
   }
 
-  const player = createPlayer(() =>
-    settings.ttsOutput() === "remote" && options.ttsPlayCmd
-      ? { kind: "remote", command: options.ttsPlayCmd }
-      : { kind: "local" },
+  const player = createPlayer(
+    () =>
+      settings.ttsOutput() === "remote" && options.ttsPlayCmd
+        ? { kind: "remote", command: options.ttsPlayCmd }
+        : { kind: "local" },
+    { logger },
   );
 
   // ------------------------------------------------------- machines
@@ -143,6 +153,7 @@ export async function setupPlugin(
     mergeForEngine,
     synth,
     player,
+    clipDuration: (wav) => wavDurationSec(wav) ?? 0,
     isRecording: () => stt?.isBusy() === true,
   });
 
@@ -229,6 +240,23 @@ export async function setupPlugin(
     ttsReplay: () => {
       if (!tts.replay()) host.toast("Nothing to replay yet", "info", 1500);
     },
+    ttsBack: () => {
+      if (!tts.seekBy(-5)) host.toast("Nothing is being read", "info", 1500);
+    },
+    ttsForward: () => {
+      if (!tts.seekBy(5)) host.toast("Nothing is being read", "info", 1500);
+    },
+    ttsFaster: () => {
+      const r = nextRate(tts.view().rate, +1);
+      tts.setRate(r);
+      host.toast(`Reading speed ${r}x`, "info", 1200);
+    },
+    ttsSlower: () => {
+      const r = nextRate(tts.view().rate, -1);
+      tts.setRate(r);
+      host.toast(`Reading speed ${r}x`, "info", 1200);
+    },
+    pickRate: () => pick("Reading speed", RATE_OPTIONS, tts.view().rate, (v) => tts.setRate(v)),
     toggleAutoSubmit,
     toggleAutoEnd: () => {
       const next = !settings.autoEnd();
@@ -371,7 +399,7 @@ export async function setupPlugin(
         `Transcription: ${settings.sttEngine() === "api" ? `API ${options.sttApiModel}` : `whisper ${(settings.whisperModel() ?? defaultWhisperModel() ?? "none").split("/").pop()}`}`,
         `LLM: ${llm.describe()}`,
         `Auto-submit: ${settings.autoSubmit() ? "on" : "off"}, auto-finish: ${settings.autoEnd() ? "on" : "off"}`,
-        `Speech: ${settings.ttsEngine()}${settings.ttsEngine() === "vieneu" ? ` (${settings.vieneuVoice() || "default voice"})` : ""}, speaker ${settings.ttsOutput() === "remote" ? "phone" : "Mac"}, auto-read ${settings.ttsAuto() ? "on" : "off"}`,
+        `Speech: ${settings.ttsEngine()}${settings.ttsEngine() === "vieneu" ? ` (${settings.vieneuVoice() || "default voice"})` : ""}, speaker ${settings.ttsOutput() === "remote" ? "phone" : "Mac"}, auto-read ${settings.ttsAuto() ? "on" : "off"}, speed ${tts.view().rate}x`,
         `Log: ${defaultLogPath()}`,
       ];
       host.alert("Voice status", lines.join("\n"));
@@ -410,6 +438,14 @@ export async function setupPlugin(
         return actions.ttsStop();
       case "tts.replay":
         return actions.ttsReplay();
+      case "tts.back":
+        return actions.ttsBack();
+      case "tts.forward":
+        return actions.ttsForward();
+      case "tts.rate":
+        tts.cycleRate();
+        status?.refresh();
+        return;
       case "tts.auto":
         actions.toggleTtsAuto();
         status?.refresh();

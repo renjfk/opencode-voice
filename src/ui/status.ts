@@ -16,7 +16,10 @@ export type Action =
   | "tts.pause"
   | "tts.stop"
   | "tts.replay"
-  | "tts.auto";
+  | "tts.auto"
+  | "tts.back"
+  | "tts.forward"
+  | "tts.rate";
 
 export type Tone = "text" | "muted" | "accent" | "danger" | "success" | "warning";
 
@@ -41,6 +44,10 @@ const BARS = "▁▂▃▄▅▆▇█";
 export function formatClock(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+export function formatRate(rate: number): string {
+  return `${Number(rate.toFixed(2))}x`;
 }
 
 export function meter(level: number): string {
@@ -144,6 +151,7 @@ export function ttsSegments(i: StatusInput): Segment[] {
     case "idle": {
       const out: Segment[] = [btn("▶ Reply", "tts.toggle")];
       if (i.tts.canReplay) out.push(btn("↺", "tts.replay", "muted"));
+      out.push(btn(formatRate(i.tts.rate), "tts.rate", i.tts.rate === 1 ? "muted" : "accent"));
       out.push(btn(i.ttsAuto ? "Read ✓" : "Read ✗", "tts.auto", i.ttsAuto ? "success" : "muted"));
       return out;
     }
@@ -165,7 +173,10 @@ export function ttsSegments(i: StatusInput): Segment[] {
           `${phase.kind === "paused" ? "⏸" : "♪"} ${pos}${part}${eng}`,
           phase.kind === "paused" ? "warning" : "accent",
         ),
+        btn("«5", "tts.back"),
         btn(phase.kind === "paused" ? "▶" : "⏸", "tts.pause"),
+        btn("5»", "tts.forward"),
+        btn(formatRate(i.tts.rate), "tts.rate", i.tts.rate === 1 ? "muted" : "accent"),
         btn("■", "tts.stop", "danger"),
       ];
     }

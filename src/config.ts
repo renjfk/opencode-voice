@@ -118,6 +118,8 @@ export interface Settings {
   setVieneuVoice(v: string): void;
   ttsOutput(): "local" | "remote";
   setTtsOutput(v: "local" | "remote"): void;
+  ttsRate(): number;
+  setTtsRate(v: number): void;
   voiceModel(): { providerID: string; modelID: string } | null;
   setVoiceModel(v: { providerID: string; modelID: string } | null): void;
 }
@@ -168,6 +170,11 @@ export function createSettings(kv: KvStore, opts: Options): Settings {
     setVieneuVoice: (v) => kv.set("tts.vieneuVoice", v),
     ttsOutput: () => (s("tts.output") === "remote" && opts.ttsPlayCmd ? "remote" : "local"),
     setTtsOutput: (v) => kv.set("tts.output", v),
+    ttsRate: () => {
+      const v = Number(kv.get("tts.rate"));
+      return Number.isFinite(v) && v >= 0.5 && v <= 2 ? v : 1;
+    },
+    setTtsRate: (v) => kv.set("tts.rate", v),
     voiceModel: () => {
       const p = s("voice.providerID");
       const m = s("voice.modelID");
