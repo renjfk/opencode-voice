@@ -19,7 +19,7 @@
 
 ```
 ● LIVE 0:07 ▃▅▄ [⏸ Pause] [■ Done] [✕ Cancel] │ ♪ 0:05/0:12 [«5] [⏸] [5»] [1.25x] [■]
-[● Speak] [✎ Fix] [⏎ Auto ✓] [Live] │ [▶ Reply] [↺] [1x] [Read ✓]
+[● Speak] [✎ Fix] [⏎ Auto ✓] [Live] [turbo] │ [▶ Reply] [↺] [1x] [Read ✓]
 ```
 
 ## Install
@@ -69,7 +69,9 @@ with `/voice-model`, or set `endpoint` + `model` + `apiKeyEnv` explicitly.
 | —                         | `/tts-faster`, `/tts-slower`, `/tts-rate` | Reading speed 0.75x–2x, voice pitch kept (saved)             |
 | —                         | `/tts-pause`, `/tts-stop`                 | Pause / stop reading                                         |
 
-Click `[1x]` on the status line to cycle the speed, `[«5]` / `[5»]` to skip.
+Click `[1x]` on the status line to cycle the speed, `[«5]` / `[5»]` to skip,
+`[Live]` to switch live/batch, and the engine button (`[turbo]`) to pick the
+transcription engine and whisper model.
 
 Settings (persisted): `/stt-mode` (live/batch), `/stt-autosubmit`,
 `/stt-auto-end` (finish after 2.5 s of silence), `/stt-normalize`,

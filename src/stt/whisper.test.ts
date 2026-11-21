@@ -12,6 +12,7 @@ import {
   resetWhisperServersForTests,
   whisperTimeoutMs,
 } from "./whisper.ts";
+import { shortModelName } from "./whisper.ts";
 
 class FakeChild extends EventEmitter implements ChildLike {
   readonly stdout = new EventEmitter();
@@ -550,4 +551,11 @@ describe("model discovery", () => {
     );
     expect(defaultWhisperModel({ ...deps, existsSync: () => false })).toBeNull();
   });
+});
+
+test("shortModelName gives a compact status label", () => {
+  expect(shortModelName("/x/ggml-large-v3-turbo-q5_0.bin")).toBe("turbo");
+  expect(shortModelName("/x/ggml-medium.bin")).toBe("medium");
+  expect(shortModelName("/x/ggml-small.en-q5_1.bin")).toBe("small en");
+  expect(shortModelName("ggml-large-v3.bin")).toBe("large-v3");
 });

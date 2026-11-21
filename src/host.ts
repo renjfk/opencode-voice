@@ -13,6 +13,7 @@ export interface SelectOption<V> {
   readonly value: V;
   readonly description?: string;
   readonly category?: string;
+  readonly disabled?: boolean;
 }
 
 export interface KeymapCommand {

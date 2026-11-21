@@ -578,3 +578,17 @@ export function defaultWhisperModel(deps: Partial<ModelScanDeps> = {}): string |
   const models = findWhisperModels(deps);
   return models.find((p) => path.basename(p).includes("large-v3-turbo")) ?? models[0] ?? null;
 }
+
+/**
+ * Short label for a ggml model file, for the status line:
+ * ggml-large-v3-turbo-q5_0.bin → "turbo", ggml-medium.bin → "medium".
+ */
+export function shortModelName(modelPath: string): string {
+  const base = (modelPath.split("/").pop() ?? modelPath)
+    .replace(/^ggml-/, "")
+    .replace(/\.bin$/, "")
+    .replace(/-q\d(_\d)?$/, "")
+    .replace(/\.en$/, " en");
+  if (/turbo/.test(base)) return base.includes(" en") ? "turbo en" : "turbo";
+  return base || "whisper";
+}

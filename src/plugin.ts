@@ -17,7 +17,12 @@ import {
 import { listInputDevices, openMic } from "./audio/mic.ts";
 import { createPlayer } from "./audio/player.ts";
 import { pcmRms, wavDurationSec, wrapPcm } from "./audio/wav.ts";
-import { createWhisperTranscriber, defaultWhisperModel, findWhisperModels } from "./stt/whisper.ts";
+import {
+  createWhisperTranscriber,
+  defaultWhisperModel,
+  findWhisperModels,
+  shortModelName,
+} from "./stt/whisper.ts";
 import { createApiTranscriber } from "./stt/api-transcriber.ts";
 import { transcribeLong } from "./stt/long.ts";
 import { cleanTranscript, isLikelyHallucination } from "./stt/filter.ts";
@@ -298,27 +303,53 @@ export async function setupPlugin(
         "Whisper model",
         opts,
         settings.whisperModel() ?? defaultWhisperModel() ?? "",
-        (v) => settings.setWhisperModel(v),
+        (v) => {
+          settings.setWhisperModel(v);
+          host.toast(`Transcription: whisper ${shortModelName(v)}`, "info", 2000);
+        },
       );
     },
     pickSttEngine: async () => {
-      if (!options.sttEndpoint) {
-        host.toast(
-          "API transcription needs sttEndpoint + sttApiModel in the plugin options",
-          "info",
-          4000,
-        );
-        return;
-      }
-      await pick(
+      const apiReady = Boolean(options.sttEndpoint && options.sttApiModel);
+      const model = settings.whisperModel() ?? defaultWhisperModel();
+      const engine = await host.select(
         "Transcription engine",
         [
-          { title: "Local whisper", value: "local" as const },
-          { title: `API (${options.sttApiModel ?? "?"})`, value: "api" as const },
+          {
+            title: "Local whisper",
+            value: "local" as const,
+            description: model
+              ? `${shortModelName(model)} — runs on this Mac; next: pick the model`
+              : "No model found in ~/.local/share/whisper-cpp",
+          },
+          {
+            title: apiReady ? `API (${options.sttApiModel})` : "API (not configured)",
+            value: "api" as const,
+            description: apiReady
+              ? `OpenAI-compatible: ${options.sttEndpoint}`
+              : "Add sttEndpoint + sttApiModel (+ sttApiKeyEnv) to the plugin options",
+          },
         ],
         settings.sttEngine(),
-        (v) => settings.setSttEngine(v),
       );
+      if (engine === undefined) return;
+      if (engine === "api") {
+        if (!apiReady) {
+          host.toast(
+            "API transcription needs sttEndpoint + sttApiModel in the plugin options",
+            "warning",
+            5000,
+          );
+          return;
+        }
+        settings.setSttEngine("api");
+        host.toast(`Transcription: API (${options.sttApiModel})`, "info", 2000);
+        status?.refresh();
+        return;
+      }
+      settings.setSttEngine("local");
+      status?.refresh();
+      await actions.pickWhisperModel();
     },
     pickMic: async () => {
       const devices = await listInputDevices().catch(() => [] as string[]);
@@ -406,6 +437,12 @@ export async function setupPlugin(
     },
   };
 
+  const sttEngineLabel = (): string => {
+    if (settings.sttEngine() === "api") return "API";
+    const m = settings.whisperModel() ?? defaultWhisperModel();
+    return m ? shortModelName(m) : "no model";
+  };
+
   const onAction = (a: Action): void => {
     switch (a) {
       case "stt.toggle":
@@ -430,6 +467,9 @@ export async function setupPlugin(
         status?.refresh();
         return;
       }
+      case "stt.engine":
+        void actions.pickSttEngine();
+        return;
       case "tts.toggle":
         return actions.ttsToggle();
       case "tts.pause":
@@ -464,6 +504,7 @@ export async function setupPlugin(
         tts: tts.view(),
         autoSubmit: settings.autoSubmit(),
         sttMode: settings.sttMode(),
+        sttEngine: sttEngineLabel(),
         ttsAuto: settings.ttsAuto(),
         now: Date.now(),
       }),

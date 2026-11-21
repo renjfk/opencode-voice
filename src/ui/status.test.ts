@@ -31,6 +31,7 @@ const base: StatusInput = {
   tts: idleTts,
   autoSubmit: true,
   sttMode: "streaming",
+  sttEngine: "turbo",
   ttsAuto: false,
   now: 10_000,
 };
@@ -41,7 +42,9 @@ const texts = (i: StatusInput) =>
 
 describe("status segments", () => {
   test("idle shows the main buttons", () => {
-    expect(texts(base)).toBe("[● Speak] [✎ Fix] [⏎ Auto ✓] [Live] │ [▶ Reply] [1x] [Read ✗]");
+    expect(texts(base)).toBe(
+      "[● Speak] [✎ Fix] [⏎ Auto ✓] [Live] [turbo] │ [▶ Reply] [1x] [Read ✗]",
+    );
   });
 
   test("recording shows timer, meter, done and cancel", () => {
@@ -195,4 +198,9 @@ test("mountStatus renders into both slots and re-renders on refresh", async () =
   expect(String(again[0]?.props.content)).toContain("Opening mac mic");
   expect(setV).not.toBeNull();
   mount.dispose();
+});
+
+test("engine button opens the engine picker", () => {
+  const seg = statusSegments(base).find((x) => x.text === "[turbo]");
+  expect(seg?.action).toBe("stt.engine");
 });

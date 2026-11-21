@@ -12,6 +12,7 @@ export type Action =
   | "stt.cancel"
   | "stt.autoSubmit"
   | "stt.mode"
+  | "stt.engine"
   | "tts.toggle"
   | "tts.pause"
   | "tts.stop"
@@ -34,6 +35,8 @@ export interface StatusInput {
   readonly tts: TtsView;
   readonly autoSubmit: boolean;
   readonly sttMode: "batch" | "streaming";
+  /** Short transcription engine label, e.g. "turbo" or "API". */
+  readonly sttEngine: string;
   readonly ttsAuto: boolean;
   readonly now: number;
 }
@@ -99,6 +102,7 @@ export function sttSegments(i: StatusInput): Segment[] {
         ),
       );
       out.push(btn(i.sttMode === "streaming" ? "Live" : "Batch", "stt.mode", "muted"));
+      out.push(btn(i.sttEngine, "stt.engine", "muted"));
       return out;
     }
     case "starting":
