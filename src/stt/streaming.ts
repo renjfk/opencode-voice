@@ -110,6 +110,8 @@ export function createStreamingSession(opts: StreamingSessionOptions): Streaming
   let lastEmitted: StreamingPartial = { stable: "", tentative: "" };
   let firstAudioAt: number | null = null;
   let lastVoiceAt: number | null = null;
+  /** Background noise of this mic: slow-rising minimum of frame levels. */
+  let noiseFloor = Number.POSITIVE_INFINITY;
   const unsubscribers: Array<() => void> = [];
 
   const toMs = (bytes: number): number => bytes / bytesPerMs;
@@ -169,7 +171,13 @@ export function createStreamingSession(opts: StreamingSessionOptions): Streaming
     const now = clock.now();
     if (firstAudioAt === null) firstAudioAt = now;
     const pcm = spool.slice(alignUp(before), alignDown(spool.total));
-    if (isVoiced(pcm, Math.max(2, alignDown(Math.round(VOICE_FRAME_MS * bytesPerMs))), voiceRms)) {
+    const level = rms(pcm);
+    noiseFloor = level < noiseFloor ? level : noiseFloor + (level - noiseFloor) * 0.002;
+    // Relative to this mic's noise (phone mics sit far above laptop noise);
+    // the cap keeps a session that starts with speech from calling it noise.
+    const floor = Number.isFinite(noiseFloor) ? Math.min(noiseFloor, voiceRms * 2) : 0;
+    const threshold = Math.max(voiceRms, floor * 3);
+    if (isVoiced(pcm, Math.max(2, alignDown(Math.round(VOICE_FRAME_MS * bytesPerMs))), threshold)) {
       lastVoiceAt = now;
     }
   }

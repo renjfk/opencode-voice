@@ -27,6 +27,7 @@ export interface CommandActions {
   pickWhisperModel(): Promise<void>;
   pickSttEngine(): Promise<void>;
   pickMic(): Promise<void>;
+  pickDevice(): Promise<void>;
   pickTtsEngine(): Promise<void>;
   pickVoice(): Promise<void>;
   pickTtsOutput(): Promise<void>;
@@ -97,6 +98,12 @@ export function buildCommands(
     cmd("stt.model", "Voice: whisper model", "stt-model", a.pickWhisperModel),
     cmd("stt.engine", "Voice: transcription engine (local / API)", "stt-engine", a.pickSttEngine),
     cmd("stt.mic", "Voice: microphone (Mac / phone)", "stt-mic", a.pickMic),
+    cmd(
+      "voice.device",
+      "Voice: speak and listen on (follow me / pick a device)",
+      "voice-device",
+      a.pickDevice,
+    ),
     cmd("tts.engine", "Voice: speech engine (VieNeu / Piper)", "tts-engine", a.pickTtsEngine),
     cmd("tts.voice", "Voice: VieNeu voice", "tts-voice", a.pickVoice),
     cmd("tts.output", "Voice: speaker (Mac / phone)", "tts-output", a.pickTtsOutput),

@@ -13,6 +13,7 @@ export type Action =
   | "stt.autoSubmit"
   | "stt.mode"
   | "stt.engine"
+  | "voice.device"
   | "tts.toggle"
   | "tts.pause"
   | "tts.stop"
@@ -37,6 +38,8 @@ export interface StatusInput {
   readonly sttMode: "batch" | "streaming";
   /** Short transcription engine label, e.g. "turbo" or "API". */
   readonly sttEngine: string;
+  /** Where audio goes when a voice node is used ("Phone"), else null. */
+  readonly audioDevice?: { readonly label: string; readonly pinned: boolean } | null;
   readonly ttsAuto: boolean;
   readonly now: number;
 }
@@ -103,6 +106,15 @@ export function sttSegments(i: StatusInput): Segment[] {
       );
       out.push(btn(i.sttMode === "streaming" ? "Live" : "Batch", "stt.mode", "muted"));
       out.push(btn(i.sttEngine, "stt.engine", "muted"));
+      if (i.audioDevice) {
+        out.push(
+          btn(
+            `${i.audioDevice.pinned ? "📌" : "🎙"} ${i.audioDevice.label}`,
+            "voice.device",
+            "accent",
+          ),
+        );
+      }
       return out;
     }
     case "starting":

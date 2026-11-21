@@ -34,6 +34,19 @@ import { createVieneuSynth } from "./tts/vieneu.ts";
 import { createPiperSynth, defaultPiperVoice } from "./tts/piper.ts";
 import { mountStatus, type Action, type StatusMount } from "./ui/status.ts";
 import {
+  createRemotePlayer,
+  createRemoteSynth,
+  createRemoteTranscriber,
+  discoverNode,
+  fetchInfo,
+  openRemoteMic,
+  startNodeDaemon,
+  type NodeInfo,
+} from "./node/client.ts";
+import { VIENEU_VOICES } from "./tts/vieneu.ts";
+import { defaultRun } from "./audio/usb.ts";
+import os from "node:os";
+import {
   LANGUAGE_OPTIONS,
   NORMALIZE_OPTIONS,
   RATE_OPTIONS,
@@ -42,7 +55,7 @@ import {
   buildCommands,
   type CommandActions,
 } from "./commands.ts";
-import type { Logger, Synth, SynthName, Transcriber } from "./types.ts";
+import type { Logger, PlayEnd, Player, Synth, SynthName, Transcriber } from "./types.ts";
 import { PLAYBACK_RATES, errorMessage } from "./types.ts";
 
 const IDLE_RELEASE_MS = 10 * 60_000;
@@ -83,10 +96,69 @@ export async function setupPlugin(
     { logger },
   );
 
+  // ------------------------------------------------ voice node (engine host)
+
+  // A node (on the strongest machine) owns engines, microphones and speakers
+  // of every device; it routes audio to whichever device you are using.
+  let nodeUrl: string | null = null;
+  let nodeInfo: NodeInfo | null = null;
+  const clientName = `${os.hostname().split(".")[0]}:opencode`;
+  const nodeReady: Promise<string | null> = discoverNode(options.voiceNode, {
+    tailscaleStatus: async () => {
+      const r = await defaultRun("tailscale", ["status", "--json"], 4000);
+      return r.code === 0 ? r.stdout : null;
+    },
+    startDaemon: () => startNodeDaemon(logger),
+  })
+    .catch(() => null)
+    .then((u) => {
+      nodeUrl = u;
+      logger.log("plugin", `voice node: ${u ?? "none (local engines)"}`, "info");
+      if (u) void refreshNode();
+      return u;
+    });
+  let lastRestart = 0;
+  async function refreshNode(): Promise<void> {
+    if (!nodeUrl) return;
+    const info = await fetchInfo(nodeUrl, {}, 2000);
+    if (!info && options.voiceNode === "host" && Date.now() - lastRestart > 30_000) {
+      // This machine is the engine host: bring the node back if it died.
+      lastRestart = Date.now();
+      logger.log("plugin", "voice node not answering — restarting it", "warn");
+      startNodeDaemon(logger);
+    }
+    const before = nodeInfo ? `${nodeInfo.home.id}|${nodeInfo.pinned}` : "";
+    nodeInfo = info;
+    const after = info ? `${info.home.id}|${info.pinned}` : "";
+    if (before !== after) status?.refresh();
+  }
+  const nodePoll = setInterval(() => void refreshNode(), 4000);
+  nodePoll.unref?.();
+
   // ------------------------------------------------ engines (lazy, released when idle)
 
+  let remoteTrans: Transcriber | null = null;
+  async function realTranscriber(): Promise<Transcriber> {
+    const u = await nodeReady;
+    if (u) {
+      remoteTrans ??= createRemoteTranscriber(u, () => settings.whisperModel(), {
+        logger,
+        clientName,
+      });
+      return remoteTrans;
+    }
+    return localTranscriber();
+  }
+  /** Resolves the real engine (node or local) at call time. */
+  const transcriber = (): Transcriber => ({
+    transcribe: async (wav, opts) => (await realTranscriber()).transcribe(wav, opts),
+    warm: async () => (await realTranscriber()).warm(),
+    describe: () => (nodeUrl ? `whisper on ${nodeInfo?.host ?? "node"}` : "local whisper"),
+    dispose: async () => {},
+  });
+
   let trans: { key: string; t: Transcriber; usedAt: number } | null = null;
-  function transcriber(): Transcriber {
+  function localTranscriber(): Transcriber {
     const api = settings.sttEngine() === "api" && options.sttEndpoint && options.sttApiModel;
     const model = settings.whisperModel() ?? defaultWhisperModel();
     const key = api ? `api:${options.sttEndpoint}:${options.sttApiModel}` : `local:${model ?? ""}`;
@@ -117,8 +189,31 @@ export async function setupPlugin(
     return t;
   }
 
+  const remoteSynths = new Map<SynthName, Synth>();
+  const synth = (name: SynthName): Synth => ({
+    name,
+    supports: () => true,
+    synthesize: async (seg, signal) => {
+      const u = await nodeReady;
+      if (!u) return localSynth(name).synthesize(seg, signal);
+      let r = remoteSynths.get(name);
+      if (!r) {
+        r = createRemoteSynth(u, name, () => settings.vieneuVoice(), { logger, clientName });
+        remoteSynths.set(name, r);
+      }
+      return r.synthesize(seg, signal);
+    },
+    warm: () => {
+      void nodeReady.then((u) => {
+        if (u) createRemoteSynth(u, name, () => settings.vieneuVoice()).warm();
+        else localSynth(name).warm();
+      });
+    },
+    dispose: async () => {},
+  });
+
   const synths = new Map<SynthName, { s: Synth; usedAt: number }>();
-  function synth(name: SynthName): Synth {
+  function localSynth(name: SynthName): Synth {
     const hit = synths.get(name);
     if (hit) {
       hit.usedAt = Date.now();
@@ -136,13 +231,40 @@ export async function setupPlugin(
     return s;
   }
 
-  const player = createPlayer(
+  const localPlayer = createPlayer(
     () =>
       settings.ttsOutput() === "remote" && options.ttsPlayCmd
         ? { kind: "remote", command: options.ttsPlayCmd }
         : { kind: "local" },
     { logger },
   );
+  // Delegates to the node's shared speaker once discovery finished.
+  let activePlayer: Player = localPlayer;
+  let wantedRate = localPlayer.rate();
+  void nodeReady.then((u) => {
+    if (!u) return;
+    activePlayer = createRemotePlayer(u, { logger, clientName });
+    activePlayer.setRate(wantedRate);
+  });
+  const player: Player = {
+    play: (wav): Promise<PlayEnd> => activePlayer.play(wav),
+    pause: () => activePlayer.pause(),
+    resume: () => activePlayer.resume(),
+    stop: () => activePlayer.stop(),
+    status: () => activePlayer.status(),
+    positionSec: () => activePlayer.positionSec(),
+    durationSec: () => activePlayer.durationSec(),
+    seek: (sec) => activePlayer.seek(sec),
+    setRate: (r) => {
+      wantedRate = r;
+      activePlayer.setRate(r);
+    },
+    rate: () => activePlayer.rate(),
+    dispose: () => {
+      localPlayer.dispose();
+      if (activePlayer !== localPlayer) activePlayer.dispose();
+    },
+  };
 
   // ------------------------------------------------------- machines
 
@@ -167,7 +289,13 @@ export async function setupPlugin(
     settings,
     options,
     logger,
-    openMic: (cfg) => openMic(cfg, { logger }),
+    openMic: async (cfg) => {
+      const u = await nodeReady;
+      return u ? openRemoteMic(u, { logger, clientName }) : openMic(cfg, { logger });
+    },
+    // With a node, the node picks the device; local settings do not apply.
+    micConfig: () => (nodeUrl ? { kind: "local", sampleRate: options.audioSampleRate } : undefined),
+    micLabel: () => (nodeUrl ? (nodeInfo?.home.label ?? "voice node") : undefined),
     transcriber,
     transcribeFile: (t, wav, opts) => transcribeLong(t, wav, opts, { logger }),
     createStreaming: (input) =>
@@ -289,7 +417,7 @@ export async function setupPlugin(
         settings.setLanguage(v),
       ),
     pickWhisperModel: async () => {
-      const models = findWhisperModels();
+      const models = nodeUrl ? (nodeInfo?.models ?? []) : findWhisperModels();
       if (models.length === 0) {
         host.toast("No whisper models found in ~/.local/share/whisper-cpp", "warning");
         return;
@@ -351,7 +479,72 @@ export async function setupPlugin(
       status?.refresh();
       await actions.pickWhisperModel();
     },
+    pickDevice: async () => {
+      const u = await nodeReady;
+      if (!u) {
+        host.toast(
+          'No voice node: set voiceNode in the plugin options ("host" on the engine machine)',
+          "info",
+          4000,
+        );
+        return;
+      }
+      const info = (await fetchInfo(u, {}, 2000)) ?? nodeInfo;
+      if (!info) {
+        host.toast("Voice node not reachable", "warning");
+        return;
+      }
+      const idle = (sec: number | null): string =>
+        sec === null
+          ? "idle unknown"
+          : sec < 60
+            ? `used ${Math.round(sec)}s ago`
+            : `used ${Math.round(sec / 60)}m ago`;
+      const opts: SelectOption<string>[] = [
+        {
+          title: `Follow me (now: ${info.pinned ? "—" : info.home.label})`,
+          value: "",
+          description: "Mic and speaker of the device you touched last",
+        },
+        ...info.devices.map((d) => ({
+          title: d.label,
+          value: d.id,
+          description: !d.online
+            ? `${d.kind} · offline`
+            : !d.mic || !d.speaker
+              ? `${d.kind} · no ${!d.mic && !d.speaker ? "audio device" : !d.mic ? "microphone" : "speaker"}`
+              : `${d.kind} · ${idle(d.idleSec)}`,
+          ...(d.online && d.mic && d.speaker ? {} : { disabled: true }),
+        })),
+      ];
+      const v = await host.select("Speak and listen on", opts, info.pinned ?? "");
+      if (v === undefined) return;
+      try {
+        const r = await fetch(new URL("/v1/home", u).toString(), {
+          method: "POST",
+          body: JSON.stringify({ id: v || null }),
+          signal: AbortSignal.timeout(3000),
+        });
+        if (!r.ok) {
+          const b = (await r.json().catch(() => ({}))) as { message?: string };
+          host.toast(b.message ?? `Could not switch (HTTP ${r.status})`, "warning");
+          return;
+        }
+        await refreshNode();
+        host.toast(
+          v
+            ? `Audio pinned to ${info.devices.find((d) => d.id === v)?.label ?? v}`
+            : "Audio follows you",
+          "info",
+          2000,
+        );
+        status?.refresh();
+      } catch (err) {
+        host.toast(`Could not switch: ${errorMessage(err)}`, "error");
+      }
+    },
     pickMic: async () => {
+      if (nodeUrl) return actions.pickDevice();
       const devices = await listInputDevices().catch(() => [] as string[]);
       const opts: SelectOption<string>[] = [
         { title: "Mac — default input", value: "" },
@@ -371,10 +564,10 @@ export async function setupPlugin(
         if (v === "vieneu") synth("vieneu").warm();
       }),
     pickVoice: async () => {
-      const s = synth("vieneu") as Synth & { voices?: () => Promise<string[]> };
-      const voices = await (s.voices?.() ?? Promise.resolve([] as string[])).catch(
-        () => [] as string[],
-      );
+      const s = localSynth("vieneu") as Synth & { voices?: () => Promise<string[]> };
+      const voices = nodeUrl
+        ? [...VIENEU_VOICES]
+        : await (s.voices?.() ?? Promise.resolve([] as string[])).catch(() => [] as string[]);
       if (voices.length === 0) {
         host.toast("Could not list VieNeu voices (is the VieNeu sidecar running?)", "warning");
         return;
@@ -387,6 +580,7 @@ export async function setupPlugin(
       );
     },
     pickTtsOutput: async () => {
+      if (nodeUrl) return actions.pickDevice();
       if (!options.ttsPlayCmd) {
         host.toast("Phone speaker needs ttsPlayCmd in the plugin options", "info", 4000);
         return;
@@ -426,7 +620,9 @@ export async function setupPlugin(
     showStatus: () => {
       const lines = [
         `Dictation: ${settings.sttMode() === "streaming" ? "live" : "batch"}, language ${settings.language()}, clean-up ${settings.normalize()}`,
-        `Mic: ${settings.mic() === "remote" ? "phone" : settings.mic() || "Mac default"}`,
+        nodeUrl
+          ? `Voice node: ${nodeInfo?.host ?? "?"} (${nodeUrl}) — audio on ${nodeInfo?.home.label ?? "?"}${nodeInfo?.pinned ? " (pinned)" : " (follows you)"}; devices: ${(nodeInfo?.devices ?? []).map((d) => `${d.label}${d.online ? "" : " offline"}`).join(", ")}`
+          : `Mic: ${settings.mic() === "remote" ? "phone" : settings.mic() || "Mac default"} (no voice node)`,
         `Transcription: ${settings.sttEngine() === "api" ? `API ${options.sttApiModel}` : `whisper ${(settings.whisperModel() ?? defaultWhisperModel() ?? "none").split("/").pop()}`}`,
         `LLM: ${llm.describe()}`,
         `Auto-submit: ${settings.autoSubmit() ? "on" : "off"}, auto-finish: ${settings.autoEnd() ? "on" : "off"}`,
@@ -438,8 +634,13 @@ export async function setupPlugin(
   };
 
   const sttEngineLabel = (): string => {
-    if (settings.sttEngine() === "api") return "API";
-    const m = settings.whisperModel() ?? defaultWhisperModel();
+    if (nodeUrl && !nodeInfo) return "⚠ node offline";
+    if (settings.sttEngine() === "api" && !nodeUrl) return "API";
+    const m = nodeUrl
+      ? settings.whisperModel() && nodeInfo?.models.includes(settings.whisperModel() as string)
+        ? settings.whisperModel()
+        : (nodeInfo?.defaultModel ?? null)
+      : (settings.whisperModel() ?? defaultWhisperModel());
     return m ? shortModelName(m) : "no model";
   };
 
@@ -467,6 +668,9 @@ export async function setupPlugin(
         status?.refresh();
         return;
       }
+      case "voice.device":
+        void actions.pickDevice();
+        return;
       case "stt.engine":
         void actions.pickSttEngine();
         return;
@@ -505,6 +709,10 @@ export async function setupPlugin(
         autoSubmit: settings.autoSubmit(),
         sttMode: settings.sttMode(),
         sttEngine: sttEngineLabel(),
+        audioDevice:
+          nodeUrl && nodeInfo
+            ? { label: nodeInfo.home.label, pinned: nodeInfo.pinned !== null }
+            : null,
         ttsAuto: settings.ttsAuto(),
         now: Date.now(),
       }),
@@ -555,6 +763,7 @@ export async function setupPlugin(
     options,
     async dispose() {
       clearInterval(reaper);
+      clearInterval(nodePoll);
       offStt();
       offTts();
       sttM.dispose();

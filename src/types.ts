@@ -30,6 +30,24 @@ export interface MicConfig {
   readonly sampleRate: number;
   /** Run `adb forward` before a remote ssh capture to 127.0.0.1/localhost. */
   readonly usbAutoForward?: boolean;
+  /** Device name for messages ("Phone", "duy-1"). */
+  readonly label?: string;
+  /** What to check when the remote device cannot be reached. */
+  readonly unreachableHint?: string;
+  /**
+   * Remote cleanup argv run (best effort) after stop/kill, e.g. an ssh call
+   * that stops the recorder on the device. A dropped ssh session alone does
+   * not always stop it.
+   */
+  readonly killCommand?: readonly string[];
+  /**
+   * Graceful stop argv: makes the device finish recording and flush what is
+   * still in flight; the capture process then exits on its own. Without it,
+   * stop() signals the local process (losing the device's buffered tail).
+   */
+  readonly stopCommand?: readonly string[];
+  /** Hint shown when the device streams pure digital silence. */
+  readonly zeroHint?: string;
 }
 
 export type MicErrorCode =
@@ -67,7 +85,14 @@ export interface MicStream {
 
 export type PlayerOutput =
   | { readonly kind: "local" }
-  | { readonly kind: "remote"; readonly command: readonly string[] };
+  | {
+      readonly kind: "remote";
+      readonly command: readonly string[];
+      /** Raw PCM rate the command expects (default: its last numeric arg). */
+      readonly rate?: number;
+      /** argv that silences the device (default: derived from the ssh target). */
+      readonly kill?: readonly string[];
+    };
 
 export type PlayerStatus = "idle" | "playing" | "paused";
 export type PlayEnd = "ended" | "stopped";

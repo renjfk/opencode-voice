@@ -69,6 +69,37 @@ for the single attached physical device first. Pick the phone with `/stt-mic`
 and `/tts-output`. If ssh exits with 255 the status says so and suggests
 checking the cable, the forward, and `sshd` in Termux.
 
+## Voice node
+
+`src/node/` is a small daemon (`bun src/node/main.ts`, port 47800) that owns
+engines, microphones and speakers. Plugins talk to it with HTTP (transcribe,
+synth, info, home) and two WebSockets (`/v1/mic` streams the home device's
+PCM, `/v1/player` drives one shared speaker: play/pause/seek/rate/stop).
+
+- **Devices** (`node.json`): `local` (sox on the node machine), `linux`
+  (ssh → `pw-cat --record --raw` / `pacat --playback --raw`), `termux`
+  (ssh → `termux-microphone-record` Opus decoded live by ffmpeg; `play`).
+  Remote processes are started under the names `ocv-mic` / `ocv-play` so stop
+  and kill hit exactly them; a dropped connection also stops the phone
+  recorder and removes its temp file.
+- **Presence** (every 3 s): macOS `HIDIdleTime`; Linux keyboard/mouse
+  interrupt counters from `/proc/interrupts` plus `pactl` defaults (a box
+  whose sink is `auto_null` or without a source has no audio); Android
+  `dumpsys power`/`window` over adb (screen on, Termux focused).
+- **Home**: pinned device if usable, else the usable device with the most
+  recent human input, else the node machine. The speaker is chosen per clip.
+- **Discovery**: `voiceNode: "auto"` tries `127.0.0.1:47800`, then every
+  online computer from `tailscale status --json`.
+- **Security**: binds loopback + the Tailscale IP only; a peer must be in
+  100.64.0.0/10 (or the tailnet IPv6 range) and `tailscale whois` must report
+  the same login as the node. Logs never contain transcript or speech text.
+
+Gotchas found on real devices: `pw-cat`/`pacat` choose their mode from
+argv0, so the mode and `--raw` flags must be explicit; Android silences the
+mic of background apps and with the screen off (the mic then streams pure
+zeros, which the plugin reports); a phone hearing its own speaker is heavily
+attenuated by echo cancellation.
+
 ## LLM
 
 Clean-up (`/stt-normalize`), Fix and reply preparation use, in order: explicit

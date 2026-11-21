@@ -145,8 +145,10 @@ export async function openMic(cfg: MicConfig, deps: MicDeps = {}): Promise<MicSt
     }
     cmd = bin;
     args = command.slice(1);
-    label = "Phone capture";
-    hint = "Check the capture script on the phone";
+    label = `${cfg.label ?? "Phone"} capture`;
+    hint = cfg.label
+      ? `Check the microphone on ${cfg.label}`
+      : "Check the capture script on the phone";
   } else {
     const backend = await localBackend(deps);
     cmd = "sox";
@@ -188,14 +190,39 @@ export async function openMic(cfg: MicConfig, deps: MicDeps = {}): Promise<MicSt
   });
 
   deps.logger?.log("mic", `capture started kind=${cfg.kind} pid=${child.pid ?? "?"}`, "debug");
+  const killCommand = cfg.killCommand;
+  const cleanup =
+    remote && killCommand && killCommand[0] !== undefined
+      ? (): void => {
+          const [kbin, ...kargs] = killCommand;
+          void (deps.run ?? defaultRun)(kbin as string, kargs, 5000).catch(() => {});
+        }
+      : null;
+  const stopCommand = cfg.stopCommand;
+  const gracefulStop =
+    remote && stopCommand && stopCommand[0] !== undefined
+      ? (): void => {
+          const [sbin, ...sargs] = stopCommand;
+          void (deps.run ?? defaultRun)(sbin as string, sargs, 8000).catch(() => {});
+        }
+      : null;
   return createStream(child, {
     remote,
+    gracefulStop,
+    zeroHint:
+      cfg.zeroHint ??
+      (remote
+        ? `Unmute the microphone on ${cfg.label ?? "the device"}`
+        : "Check that the input is not muted and the terminal has microphone permission"),
     label,
     hint,
+    device: cfg.label ?? "the phone",
+    unreachableHint: cfg.unreachableHint ?? PHONE_UNREACHABLE_HINT,
+    cleanup,
     sampleRate: cfg.sampleRate,
     schedule,
     noAudioTimeoutMs: deps.noAudioTimeoutMs ?? (remote ? 8000 : 4000),
-    stopTimeoutMs: deps.stopTimeoutMs ?? 3000,
+    stopTimeoutMs: deps.stopTimeoutMs ?? (gracefulStop ? 6000 : 3000),
     logger: deps.logger,
   });
 }
@@ -225,9 +252,23 @@ interface StreamOpts {
   readonly noAudioTimeoutMs: number;
   readonly stopTimeoutMs: number;
   readonly logger: Logger | undefined;
+  readonly device: string;
+  readonly unreachableHint: string;
+  /** Remote cleanup after stop/kill (runs once). */
+  readonly cleanup: (() => void) | null;
+  /** Ask the device to finish and flush; the process then exits by itself. */
+  readonly gracefulStop: (() => void) | null;
+  /** What to do when the device only streams zeros. */
+  readonly zeroHint: string;
 }
 
 function createStream(child: ChildProc, o: StreamOpts): MicStream {
+  let cleaned = false;
+  const cleanupOnce = (): void => {
+    if (cleaned || !o.cleanup) return;
+    cleaned = true;
+    o.cleanup();
+  };
   const dataCbs = new Set<(chunk: Buffer) => void>();
   const errorCbs = new Set<(err: MicError) => void>();
   let paused = false;
@@ -253,6 +294,30 @@ function createStream(child: ChildProc, o: StreamOpts): MicStream {
     }
   }
 
+  // A device that streams pure digital silence is being blocked (Android
+  // silences background apps' microphones; a muted input does the same).
+  let zeroBytes = 0;
+  let sawSignal = false;
+  const ZERO_LIMIT = o.sampleRate * 2 * 3; // 3 s
+  function checkZeros(buf: Buffer): void {
+    if (sawSignal || error) return;
+    for (let i = 0; i + 1 < buf.length; i += 2) {
+      if (buf.readInt16LE(i) !== 0) {
+        sawSignal = true;
+        return;
+      }
+    }
+    zeroBytes += buf.length;
+    if (zeroBytes >= ZERO_LIMIT) {
+      const who = o.remote ? o.device.replace(/^the p/, "P") : "The microphone";
+      emitError({
+        code: "NO_AUDIO",
+        message: `${who} sends only silence (microphone blocked or muted)`,
+        hint: o.zeroHint,
+      });
+    }
+  }
+
   function signal(sig: NodeJS.Signals): void {
     if (closed) return;
     try {
@@ -268,6 +333,7 @@ function createStream(child: ChildProc, o: StreamOpts): MicStream {
       cancelNoAudio?.();
       cancelNoAudio = null;
     }
+    checkZeros(buf);
     // Paused audio is drained and dropped: the process keeps running so a
     // remote pipe never buffers paused speech and replays it on resume.
     if (paused || dropAll) return;
@@ -302,8 +368,8 @@ function createStream(child: ChildProc, o: StreamOpts): MicStream {
       if (o.remote && code === 255) {
         emitError({
           code: "CONNECTION",
-          message: `Phone connection failed (ssh exit 255)${suffix}`,
-          hint: PHONE_UNREACHABLE_HINT,
+          message: `${o.device === "the phone" ? "Phone" : o.device} connection failed (ssh exit 255)${suffix}`,
+          hint: o.unreachableHint,
         });
       } else {
         const how = code !== null ? `code ${code}` : `signal ${sig ?? "?"}`;
@@ -327,10 +393,11 @@ function createStream(child: ChildProc, o: StreamOpts): MicStream {
     emitError({
       code: "NO_AUDIO",
       message: o.remote
-        ? `No audio from the phone in ${secs}s`
+        ? `No audio from ${o.device} in ${secs}s`
         : `No audio from the microphone in ${secs}s`,
-      hint: o.remote ? "Check that the phone mic is free and the capture script runs" : o.hint,
+      hint: o.remote ? `Check that the microphone on ${o.device} is free` : o.hint,
     });
+    cleanupOnce();
   }, o.noAudioTimeoutMs);
 
   let stopping: Promise<void> | null = null;
@@ -383,10 +450,18 @@ function createStream(child: ChildProc, o: StreamOpts): MicStream {
         cancelTimer = o.schedule(() => {
           dropAll = true;
           signal("SIGKILL");
+          cleanupOnce();
           finish();
         }, o.stopTimeoutMs);
+        if (o.gracefulStop) {
+          // The device drains its buffered tail and the stream closes itself;
+          // the timer above hard-kills it if that never happens.
+          o.gracefulStop();
+          return;
+        }
         // Local sox flushes and exits cleanly on SIGINT; for ssh, SIGTERM.
         signal(o.remote ? "SIGTERM" : "SIGINT");
+        cleanupOnce();
       });
       return stopping;
     },
@@ -396,6 +471,7 @@ function createStream(child: ChildProc, o: StreamOpts): MicStream {
       cancelNoAudio?.();
       cancelNoAudio = null;
       signal("SIGKILL");
+      cleanupOnce();
     },
   };
 }

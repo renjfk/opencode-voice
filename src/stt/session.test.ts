@@ -495,3 +495,27 @@ test("whisper never receives the LLM system prompt override", async () => {
   await flush();
   expect(seenPrompt).toBeUndefined();
 });
+
+test("auto-end works on a noisy mic: silence is judged against the mic's noise floor", async () => {
+  const h = harness({ autoEnd: true });
+  h.machine.toggle();
+  await flush();
+  const m = h.mics[0];
+  // Phone-like mic: background noise ~0.02 (above the laptop speech threshold).
+  for (let i = 0; i < 10; i++) m?.push(pcm(100, 650));
+  m?.push(pcm(800, 6000)); // speech
+  for (let i = 0; i < 4; i++) m?.push(pcm(100, 650)); // back to background noise
+  h.clock.advance(2400);
+  expect(h.machine.view().phase.kind).toBe("recording");
+  h.clock.advance(400);
+  expect(h.machine.view().phase.kind).toBe("transcribing");
+});
+
+test("noise alone never counts as speech, so it never auto-submits", async () => {
+  const h = harness({ autoEnd: true });
+  h.machine.toggle();
+  await flush();
+  for (let i = 0; i < 30; i++) h.mics[0]?.push(pcm(100, 650));
+  h.clock.advance(6000);
+  expect(h.machine.view().phase.kind).toBe("recording");
+});

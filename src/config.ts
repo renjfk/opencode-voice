@@ -26,6 +26,11 @@ export interface Options {
   readonly ttsPlayCmd: readonly string[] | null;
   readonly ttsPrompt: string | null;
   readonly keybinds: Readonly<Record<string, string>>;
+  /**
+   * Voice node: "auto" (this machine, else one on the tailnet, else local
+   * engines), "host" (run the node on this machine), "off", or a URL.
+   */
+  readonly voiceNode: string;
   /** Raw options, for the LLM resolver (endpoint/model/apiKeyEnv...). */
   readonly raw: Readonly<Record<string, unknown>>;
 }
@@ -80,6 +85,7 @@ export function parseOptions(raw: Readonly<Record<string, unknown>> | undefined)
     ttsPlayCmd: argv(o.ttsPlayCmd),
     ttsPrompt: str(o.ttsManualPrompt) ?? str(o.ttsPrompt),
     keybinds,
+    voiceNode: str(o.voiceNode) ?? "auto",
     raw: o,
   };
 }

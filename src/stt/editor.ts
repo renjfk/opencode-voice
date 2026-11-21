@@ -51,7 +51,7 @@ export function replaceAll(t: FocusedTextarea, text: string): void {
   replaceRange(t, 0, t.plainText.length, text);
 }
 
-export function createLiveSpan(t: FocusedTextarea): LiveSpan {
+export function createLiveSpan(t: FocusedTextarea, onDetach?: (why: string) => void): LiveSpan {
   const anchor = Math.max(0, Math.min(t.cursorOffset, t.plainText.length));
   const before = t.plainText.slice(0, anchor);
   const after = t.plainText.slice(anchor);
@@ -79,6 +79,13 @@ export function createLiveSpan(t: FocusedTextarea): LiveSpan {
       if (detached) return false;
       if (!intact()) {
         detached = true;
+        try {
+          const actual = t.plainText;
+          const expected = before + written + after;
+          onDetach?.(
+            `field changed: expected=${expected.length} actual=${actual.length} nfcEqual=${actual.normalize("NFC") === expected.normalize("NFC")} destroyed=${t.isDestroyed === true}`,
+          );
+        } catch {}
         return false;
       }
       const next = text ? pad + text : "";

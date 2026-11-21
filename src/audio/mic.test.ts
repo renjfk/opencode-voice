@@ -404,3 +404,42 @@ describe("listInputDevices", () => {
     expect(parsePactlSourcesShort("")).toEqual([]);
   });
 });
+
+describe("blocked microphone", () => {
+  test("3 s of pure digital silence reports NO_AUDIO with the device hint", async () => {
+    const { sp, deps } = setup();
+    const mic = await openMic(
+      {
+        kind: "remote",
+        command: SSH,
+        sampleRate: 16000,
+        label: "Phone",
+        zeroHint: "open Termux on the phone",
+      },
+      deps,
+    );
+    const errs: string[] = [];
+    mic.onError((e) => errs.push(`${e.code}|${e.message}|${e.hint}`));
+    for (let i = 0; i < 5; i++) sp.last().stdout.write(Buffer.alloc(16000)); // 2.5 s of zeros
+    await tick();
+    expect(errs).toEqual([]);
+    sp.last().stdout.write(Buffer.alloc(16000)); // 3 s
+    await tick();
+    expect(errs).toEqual([
+      "NO_AUDIO|Phone sends only silence (microphone blocked or muted)|open Termux on the phone",
+    ]);
+  });
+
+  test("any real sample means the mic works: no false alarm later", async () => {
+    const { sp, deps } = setup();
+    const mic = await openMic({ kind: "local", sampleRate: 16000 }, deps);
+    const errs: string[] = [];
+    mic.onError((e) => errs.push(e.code));
+    const b = Buffer.alloc(3200);
+    b.writeInt16LE(5, 100);
+    sp.last().stdout.write(b);
+    for (let i = 0; i < 10; i++) sp.last().stdout.write(Buffer.alloc(16000));
+    await tick();
+    expect(errs).toEqual([]);
+  });
+});

@@ -142,6 +142,8 @@ export function createPlayer(getOutput: () => PlayerOutput, deps: PlayerDeps = {
   let disposed = false;
   /** Remote audio may still be sounding on the phone (needs a remote kill). */
   let remoteLive: readonly string[] | null = null;
+  /** Explicit silence command for the live remote output, if it gave one. */
+  let remoteKillCmd: readonly string[] | null = null;
   /** In-flight remote kill; any respawn waits for it. Never rejects. */
   let killing: Promise<void> | null = null;
 
@@ -162,9 +164,17 @@ export function createPlayer(getOutput: () => PlayerOutput, deps: PlayerDeps = {
 
   function killRemote(): void {
     const command = remoteLive;
+    const explicit = remoteKillCmd;
     remoteLive = null;
+    remoteKillCmd = null;
     if (!command) return;
-    const p = remoteKill(command).catch(() => {});
+    const p = (
+      explicit && explicit[0] !== undefined
+        ? run(explicit[0], explicit.slice(1), 5000).then((r) => {
+            if (r.code !== 0) log(`remote kill exit=${r.code}`, "warn");
+          })
+        : remoteKill(command)
+    ).catch(() => {});
     const chained = killing ? Promise.all([killing, p]).then(() => {}) : p;
     killing = chained;
     void chained.then(() => {
@@ -258,7 +268,10 @@ export function createPlayer(getOutput: () => PlayerOutput, deps: PlayerDeps = {
     baseSec = offsetSec;
     const owned: Owned = { kind: out.kind, child, ff: null };
     proc = owned;
-    if (out.kind === "remote") remoteLive = out.command;
+    if (out.kind === "remote") {
+      remoteLive = out.command;
+      remoteKillCmd = out.kill ?? null;
+    }
     log(
       `spawn kind=${out.kind} offset=${offsetSec.toFixed(2)} speed=${speed} bytes=${audio.length}`,
     );
@@ -288,7 +301,7 @@ export function createPlayer(getOutput: () => PlayerOutput, deps: PlayerDeps = {
     }
 
     // Remote: convert to raw s16le at the remote's rate, seeking with -ss.
-    const rate = remoteRate(out.command, deps.remoteSampleRate ?? 16000);
+    const rate = out.rate ?? remoteRate(out.command, deps.remoteSampleRate ?? 16000);
     try {
       ff = spawn("ffmpeg", ffmpegArgs(offsetSec, rate, speed), {
         stdio: ["pipe", "pipe", "pipe"],

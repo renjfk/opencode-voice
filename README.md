@@ -55,6 +55,58 @@ OpenCode after changing the config.
 The clean-up / Fix LLM defaults to the session's current model; pick another
 with `/voice-model`, or set `endpoint` + `model` + `apiKeyEnv` explicitly.
 
+## Voice follows you across machines (voice node)
+
+Run OpenCode on any machine in your Tailscale network and speak/listen on
+**whichever device you are using right now** — this Mac, a Linux box, or an
+Android phone (Termux). Transcription (whisper) and speech (VieNeu/Piper) run
+once, on the strongest machine (the _engine host_).
+
+```
+OpenCode on duy ──┐                       ┌── mic + speaker: Mac
+OpenCode on Mac ──┼─ text ─▶ voice node ◀─┼── mic + speaker: duy-1 (Linux, PipeWire)
+OpenCode on ... ──┘    (engine host: Mac) └── mic + speaker: Phone (Termux, USB or Tailscale)
+```
+
+- **Follow me**: audio goes to the device with the most recent keyboard,
+  mouse or touch activity (a phone only counts while Termux is on screen —
+  Android blocks the mic for background apps). Devices without a working
+  mic/speaker are skipped. Pin a device with the status-line button
+  (`[🎙 Mac]` / `[📌 Phone]`) or `/voice-device`.
+- One dictation at a time across all machines ("Microphone is in use by
+  duy:opencode"); replies from any machine play on the same speaker.
+- The node only listens on loopback and your Tailscale IP and only accepts
+  peers of your own tailnet account (`tailscale whois`).
+
+Setup on the engine host (plugin option `"voiceNode": "host"` starts the node
+automatically and restarts it if it dies):
+
+`~/.config/opencode-voice/node.json`
+
+```json
+{
+  "devices": [
+    { "id": "mac", "label": "Mac", "kind": "local" },
+    {
+      "id": "phone",
+      "label": "Phone",
+      "kind": "termux",
+      "ssh": "phone-usb",
+      "adb": "SERIAL",
+      "adbForwardPort": 8022
+    },
+    { "id": "duy-1", "label": "duy-1", "kind": "linux", "ssh": "duy-1" }
+  ],
+  "vieneuVoice": "Mai Anh"
+}
+```
+
+`ssh` names are hosts in `~/.config/opencode-voice/ssh_config` (key-based,
+non-interactive). Linux devices need PipeWire/PulseAudio (`pw-cat`, `pacat`);
+the phone needs Termux with `openssh`, `sox`, `ffmpeg` and Termux:API. On the
+other machines just add the plugin with `"voiceNode": "auto"` (the default):
+it finds the node on the tailnet. See [docs/technical.md](docs/technical.md#voice-node).
+
 ## Keys and commands
 
 | Key                       | Command                                   | What it does                                                 |
@@ -77,7 +129,8 @@ Settings (persisted): `/stt-mode` (live/batch), `/stt-autosubmit`,
 `/stt-auto-end` (finish after 2.5 s of silence), `/stt-normalize`,
 `/stt-language`, `/stt-model`, `/stt-engine`, `/stt-mic`, `/tts-mode`
 (auto-read replies), `/tts-engine`, `/tts-voice`, `/tts-output`,
-`/voice-model`, and `/voice-status` for diagnostics.
+`/voice-model`, `/voice-device` (follow me / pin a device), and `/voice-status`
+for diagnostics.
 
 Override keys with `"keybinds": { "stt.record": "ctrl+r", "tts.speak-last": "none" }`.
 

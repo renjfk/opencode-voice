@@ -346,6 +346,17 @@ describe("pause / level / silence", () => {
   });
 });
 
+test("silenceMs on a noisy mic: background noise above the laptop threshold still counts as silence", async () => {
+  const s = setup(() => "");
+  s.session.start();
+  for (let i = 0; i < 10; i++) s.m.push(100, 0.02); // phone-like noise floor
+  s.m.push(300, 0.3); // speech
+  await s.clk.advance(100);
+  for (let i = 0; i < 20; i++) s.m.push(100, 0.02); // noise again
+  await s.clk.advance(2400);
+  expect(s.session.silenceMs()).toBeGreaterThanOrEqual(2400);
+});
+
 describe("finish", () => {
   test("full-utterance final decode wins even when shorter than the live text", async () => {
     const s = setup((call) =>

@@ -112,6 +112,10 @@ export interface SttDeps {
     needsContext(raw: string): boolean;
     cleanOutput(raw: string, out: string): string;
   };
+  /** Override where audio comes from (e.g. a voice node decides the device). */
+  micConfig?: () => MicConfig | string | undefined;
+  /** Override the mic name shown while opening ("Phone", "Mac"...). */
+  micLabel?: () => string | undefined;
   /** Called when the mic opens (e.g. pause TTS so the mic does not hear it). */
   onRecordingStart?(): void;
   clock?: {
@@ -139,6 +143,7 @@ export interface SttMachine {
 }
 
 export const AUTO_END_SILENCE_MS = 2500;
+/** Minimum level counted as speech on a quiet mic. */
 const VOICE_RMS = 0.012;
 const MIN_AUDIO_SEC = 0.4;
 const MAX_BATCH_SEC = 600;
@@ -170,6 +175,8 @@ export function createSttMachine(deps: SttDeps): SttMachine {
   let partial = "";
   let heardVoice = false;
   let silentSince = 0;
+  /** Background noise of this mic (slow-rising minimum of chunk levels). */
+  let noiseFloor = Number.POSITIVE_INFINITY;
   let ticker: unknown = null;
   let target: FocusedTextarea | null = null;
   let finishing = false;
@@ -198,11 +205,15 @@ export function createSttMachine(deps: SttDeps): SttMachine {
   const gatewaySession = (): string | null => host.anySessionID();
 
   const micLabel = (): string => {
+    const override = deps.micLabel?.();
+    if (override !== undefined) return override;
     const m = settings.mic();
     return m === "remote" ? "phone" : m || "mac";
   };
 
   function micConfig(): MicConfig | string {
+    const override = deps.micConfig?.();
+    if (override !== undefined) return override;
     const m = settings.mic();
     if (m === "remote") {
       if (!options.sttCaptureCmd)
@@ -238,6 +249,7 @@ export function createSttMachine(deps: SttDeps): SttMachine {
     partial = "";
     heardVoice = false;
     silentSince = 0;
+    noiseFloor = Number.POSITIVE_INFINITY;
     target = null;
     finishing = false;
     setPhase({ kind: "idle" });
@@ -301,14 +313,26 @@ export function createSttMachine(deps: SttDeps): SttMachine {
     );
   }
 
+  /**
+   * Speech vs silence relative to this mic's own noise floor: phone and
+   * remote mics sit far above a laptop mic's noise, so a fixed threshold
+   * never sees "silence" there (auto-finish then never fires).
+   */
   function trackSilence(rms: number): void {
     const now = clock.now();
-    if (rms >= VOICE_RMS) {
+    // Follow drops at once, rise slowly (so speech does not lift the floor).
+    noiseFloor = rms < noiseFloor ? rms : noiseFloor + (rms - noiseFloor) * 0.002;
+    // Capped: if the very first chunk is already speech, the "floor" is speech.
+    const floor = Number.isFinite(noiseFloor) ? Math.min(noiseFloor, VOICE_RMS * 2) : 0;
+    const voice = Math.max(VOICE_RMS, floor * 3);
+    const quiet = Math.max(VOICE_RMS * 0.75, floor * 1.8);
+    if (rms >= voice) {
       heardVoice = true;
       silentSince = 0;
-    } else if (heardVoice && !silentSince) {
+    } else if (rms < quiet && heardVoice && !silentSince) {
       silentSince = now;
     }
+    // In between quiet and voice: neither; the silence clock keeps its state.
   }
 
   function beginBatch(myOp: number, purpose: Purpose, m: MicStream): void {
@@ -340,7 +364,9 @@ export function createSttMachine(deps: SttDeps): SttMachine {
   }
 
   function beginLive(myOp: number, purpose: Purpose, m: MicStream, transcriber: Transcriber): void {
-    span = target ? createLiveSpan(target) : null;
+    span = target
+      ? createLiveSpan(target, (why) => logger.log("stt", `live span detached: ${why}`, "warn"))
+      : null;
     const s = deps.createStreaming({
       mic: m,
       transcriber,
