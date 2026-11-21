@@ -398,7 +398,10 @@ export function createRemotePlayer(base: string, deps: ClientDeps = {}): Player 
     seek(sec) {
       if (st.status === "idle") return false;
       st = { ...st, pos: Math.max(0, Math.min(sec, st.dur)), at: now() };
-      send(JSON.stringify({ op: "seek", sec }));
+      // JSON has no Infinity (it becomes null): "past the end" must stay a number.
+      send(
+        JSON.stringify({ op: "seek", sec: Number.isFinite(sec) ? sec : Number.MAX_SAFE_INTEGER }),
+      );
       return true;
     },
     setRate(rate) {

@@ -183,6 +183,17 @@ describe("wire", () => {
     p.dispose();
   });
 
+  test("player: seek past the end finishes the clip (rewind into the previous part)", async () => {
+    // The TTS session rewinds across parts with seek(Infinity); JSON turns
+    // Infinity into null, which the node used to ignore.
+    const p = createRemotePlayer(BASE);
+    const ended = p.play(wrapPcm(Buffer.alloc(32000 * 2), 16000));
+    await until(() => player.plays.length === 3);
+    expect(p.seek(Number.POSITIVE_INFINITY)).toBe(true);
+    expect(await ended).toBe("ended");
+    p.dispose();
+  });
+
   test("transcribe and synth over HTTP, synth errors keep their code", async () => {
     const t = createRemoteTranscriber(BASE, () => "m");
     expect(await t.transcribe(wrapPcm(Buffer.alloc(3200), 16000), { language: "vi" })).toBe(
