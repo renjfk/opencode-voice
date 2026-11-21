@@ -102,6 +102,10 @@ reply ─▶ tts/session.ts ─▶ tts/text.ts (markdown → speech, vi/en parts
   never replays paused speech.
 - The whisper server is shared by batch and live dictation and released after
   10 idle minutes; VieNeu stays warm while auto-read is on.
+- Speed uses `sox tempo -s` locally and `ffmpeg atempo` for the phone, so the
+  voice keeps its pitch; changing speed or skipping respawns the player at the
+  current position. Skipping back past the start of a part continues in the
+  previous part.
 - Auto-read speaks a reply once, only in the TUI showing that session, and
   waits while you are dictating.
 

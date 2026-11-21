@@ -18,8 +18,8 @@
 - **One status line** above the prompt shows exactly what is happening, with clickable buttons:
 
 ```
-● LIVE 0:07 ▃▅▄ [⏸ Pause] [■ Done] [✕ Cancel] │ ♪ 0:05/0:12 [⏸] [■]
-[● Speak] [✎ Fix] [⏎ Auto ✓] [Live] │ [▶ Reply] [↺] [Read ✓]
+● LIVE 0:07 ▃▅▄ [⏸ Pause] [■ Done] [✕ Cancel] │ ♪ 0:05/0:12 [«5] [⏸] [5»] [1.25x] [■]
+[● Speak] [✎ Fix] [⏎ Auto ✓] [Live] │ [▶ Reply] [↺] [1x] [Read ✓]
 ```
 
 ## Install
@@ -57,15 +57,19 @@ with `/voice-model`, or set `endpoint` + `model` + `apiKeyEnv` explicitly.
 
 ## Keys and commands
 
-| Key         | Command                   | What it does                                                 |
-| ----------- | ------------------------- | ------------------------------------------------------------ |
-| `<leader>[` | `/stt`                    | Start dictation; press again to finish (resumes when paused) |
-| —           | `/stt-fix`                | Re-speak to correct the current text                         |
-| —           | `/stt-pause`              | Pause / resume live dictation                                |
-| `<leader>.` | `/voice-cancel`           | Cancel everything in flight                                  |
-| `<leader>]` | `/tts-speak`              | Read the last reply; press again to stop                     |
-| `<leader>0` | `/tts-replay`             | Replay the last reading                                      |
-| —           | `/tts-pause`, `/tts-stop` | Pause / stop reading                                         |
+| Key                       | Command                                   | What it does                                                 |
+| ------------------------- | ----------------------------------------- | ------------------------------------------------------------ |
+| `<leader>[`               | `/stt`                                    | Start dictation; press again to finish (resumes when paused) |
+| —                         | `/stt-fix`                                | Re-speak to correct the current text                         |
+| —                         | `/stt-pause`                              | Pause / resume live dictation                                |
+| `<leader>.`               | `/voice-cancel`                           | Cancel everything in flight                                  |
+| `<leader>]`               | `/tts-speak`                              | Read the last reply; press again to stop                     |
+| `<leader>0`               | `/tts-replay`                             | Replay the last reading                                      |
+| `<leader>-` / `<leader>=` | `/tts-rewind`, `/tts-forward`             | Back / forward 5 s (also across parts)                       |
+| —                         | `/tts-faster`, `/tts-slower`, `/tts-rate` | Reading speed 0.75x–2x, voice pitch kept (saved)             |
+| —                         | `/tts-pause`, `/tts-stop`                 | Pause / stop reading                                         |
+
+Click `[1x]` on the status line to cycle the speed, `[«5]` / `[5»]` to skip.
 
 Settings (persisted): `/stt-mode` (live/batch), `/stt-autosubmit`,
 `/stt-auto-end` (finish after 2.5 s of silence), `/stt-normalize`,
@@ -104,7 +108,7 @@ contains transcript text.
 
 Rewritten in TypeScript around two small state machines (dictation, speech)
 and one status line. Conversation mode, live notes, Kokoro, Chatterbox,
-Gipformer, seek and playback speed were removed. OpenCode v1 is no longer
+and Gipformer were removed (reading speed and ±5 s skip are back since 2.0.2). OpenCode v1 is no longer
 supported. Existing settings carry over.
 
 ## License
