@@ -301,14 +301,17 @@ export async function mountStatus(input: {
     try {
       const box = tui.createElement("box");
       tui.setProp(box, "flexDirection", "row");
-      tui.setProp(box, "height", 1);
+      // Narrow terminals (phone): buttons wrap onto more lines instead of
+      // being cut off. The gap (not a leading space) keeps wrapped lines flush.
+      tui.setProp(box, "flexWrap", "wrap");
+      tui.setProp(box, "columnGap", 1);
       tui.setProp(box, "flexShrink", 0);
       tui.setProp(box, "width", "100%");
       tui.insert(box, () => {
         version();
-        return statusSegments(input.read()).map((seg, idx) => {
+        return statusSegments(input.read()).map((seg) => {
           const node = tui.createElement("text");
-          tui.setProp(node, "content", idx === 0 ? seg.text : ` ${seg.text}`);
+          tui.setProp(node, "content", seg.text);
           tui.setProp(node, "fg", palette[seg.tone]);
           tui.setProp(node, "flexShrink", 0);
           if (seg.action) {

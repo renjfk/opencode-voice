@@ -208,6 +208,11 @@ test("mountStatus renders into both slots and re-renders on refresh", async () =
   renders[0]?.();
   const nodes = (accessor as unknown as () => Array<{ props: Record<string, unknown> }>)();
   expect(nodes[0]?.props.content).toBe("[● Speak]");
+  expect(nodes[1]?.props.content).toBe("[✎ Fix]"); // spacing comes from the gap
+  // Narrow terminals: the row wraps instead of cutting buttons off.
+  const box = created.find((n) => n.tag === "box");
+  expect(box?.props).toMatchObject({ flexWrap: "wrap", columnGap: 1 });
+  expect(box?.props.height).toBeUndefined();
   const click = nodes[0]?.props.onMouseUp as () => void;
   click();
   click(); // double fire is debounced
