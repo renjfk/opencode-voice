@@ -120,6 +120,13 @@ export interface Hub {
 }
 
 const PRESENCE_TIMEOUT_MS = 4000;
+/**
+ * A device that keeps failing is probed less often: every failed ssh login
+ * counts against the box's sshd (OpenSSH PerSourcePenalties), and probing a
+ * misconfigured host every 3 s would lock this machine out of it entirely.
+ */
+const PROBE_BACKOFF_BASE_MS = 3000;
+const PROBE_BACKOFF_MAX_MS = 5 * 60_000;
 
 export function createHub(deps: HubDeps): Hub {
   const now = deps.now ?? (() => Date.now());
@@ -133,6 +140,8 @@ export function createHub(deps: HubDeps): Hub {
   let micOwnerName: string | null = null;
   let timer: ReturnType<typeof setInterval> | null = null;
   let refreshing: Promise<void> | null = null;
+  /** Per device: consecutive failed probes and when to probe again. */
+  const backoff = new Map<string, { failures: number; nextAt: number }>();
   let playDevice: DeviceConfig = deps.devices[0] as DeviceConfig;
 
   /** Last state per device + check, so transitions are logged once. */
@@ -198,7 +207,11 @@ export function createHub(deps: HubDeps): Hub {
       }
       const [cmd, ...args] = sshArgv(deps.ctx, d.ssh ?? d.id, LINUX_PRESENCE_SCRIPT);
       const r = await deps.run(cmd as string, args, PRESENCE_TIMEOUT_MS);
-      if (r.code !== 0) return { online: false };
+      if (r.code !== 0) {
+        const why = r.stderr.trim().split("\n").pop() ?? "";
+        log(`presence ${d.id}: ssh exit ${r.code}${why ? `: ${why}` : ""}`);
+        return { online: false };
+      }
       const caps = parseLinuxAudio(r.stdout);
       const count = inputInterruptCount(r.stdout);
       const t = now();
@@ -286,10 +299,26 @@ export function createHub(deps: HubDeps): Hub {
     async refresh() {
       if (refreshing) return refreshing;
       refreshing = (async () => {
-        const results = await Promise.all(
-          deps.devices.map(async (d) => [d.id, await probe(d)] as const),
-        );
-        for (const [id, p] of results) status.set(id, p);
+        const t = now();
+        const due = deps.devices.filter((d) => (backoff.get(d.id)?.nextAt ?? 0) <= t);
+        const results = await Promise.all(due.map(async (d) => [d, await probe(d)] as const));
+        for (const [d, p] of results) {
+          status.set(d.id, p);
+          const prev = backoff.get(d.id);
+          if (p.online || d.kind === "local") {
+            if (prev) log(`${d.id}: online again`, "info");
+            backoff.delete(d.id);
+            continue;
+          }
+          const failures = (prev?.failures ?? 0) + 1;
+          const wait = Math.min(PROBE_BACKOFF_MAX_MS, PROBE_BACKOFF_BASE_MS * 2 ** (failures - 1));
+          backoff.set(d.id, { failures, nextAt: now() + wait });
+          if (failures === 1 || wait === PROBE_BACKOFF_MAX_MS)
+            log(
+              `${d.id}: offline (probe failed ${failures}x), next probe in ${Math.round(wait / 1000)}s`,
+              failures === 1 ? "info" : "debug",
+            );
+        }
       })().finally(() => {
         refreshing = null;
       });

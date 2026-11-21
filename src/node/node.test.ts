@@ -262,6 +262,41 @@ describe("hub: follow me", () => {
     expect(h.adbCalls.at(-1)).toBe("-s S1 forward tcp:8022 tcp:8022");
   });
 
+  test("a device that keeps failing is probed less and less often", async () => {
+    const h = hubHarness([MAC, BOX]);
+    let probes = 0;
+    h.presence.box = () => {
+      probes += 1;
+      return { code: 255, stdout: "", stderr: "Permission denied (publickey,password)." };
+    };
+    const tick = async (ms: number) => {
+      h.advance(ms);
+      await h.hub.refresh();
+    };
+    await h.hub.refresh(); // fail 1 → wait 3 s
+    await tick(1000); // not due
+    expect(probes).toBe(1);
+    await tick(2000); // fail 2 → wait 6 s
+    await tick(3000); // not due
+    expect(probes).toBe(2);
+    await tick(3000); // fail 3 → wait 12 s
+    expect(probes).toBe(3);
+    for (let i = 0; i < 400; i++) await tick(3000); // 20 min of 3 s ticks
+    // 3+6+12+...+192 s, then every 300 s: far from 400 probes.
+    expect(probes).toBeLessThan(12);
+    // Back online: probed every tick again.
+    h.presence.box = () => {
+      probes += 1;
+      return { code: 0, stdout: "1: 10 i8042\n@@audio src=a sink=b inputs=1", stderr: "" };
+    };
+    await tick(300_000);
+    const before = probes;
+    await tick(3000);
+    await tick(3000);
+    expect(probes).toBe(before + 2);
+    expect(h.hub.devices().find((d) => d.id === "box")?.online).toBe(true);
+  });
+
   test("offline devices drop out; with nothing else the local machine stays home", async () => {
     const h = hubHarness([MAC, BOX]);
     h.presence.box = () => ({ code: 255, stdout: "", stderr: "" });
