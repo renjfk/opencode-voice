@@ -85,7 +85,10 @@ PCM, `/v1/player` drives one shared speaker: play/pause/seek/rate/stop).
 - **Presence** (every 3 s): macOS `HIDIdleTime`; Linux keyboard/mouse
   interrupt counters from `/proc/interrupts` plus `pactl` defaults (a box
   whose sink is `auto_null` or without a source has no audio); Android
-  `dumpsys power`/`window` over adb (screen on, Termux focused).
+  `dumpsys power`/`window` over adb (screen on, Termux focused) plus
+  `pidof sshd` (no sshd = the phone is skipped). The USB forward
+  (`adb forward tcp:8022 tcp:8022`) is checked on every probe and restored
+  when a replug or adb restart dropped it.
 - **Home**: pinned device if usable, else the usable device with the most
   recent human input, else the node machine. The speaker is chosen per clip.
 - **Discovery**: `voiceNode: "auto"` tries `127.0.0.1:47800`, then every

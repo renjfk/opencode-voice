@@ -213,4 +213,15 @@ export function parseLinuxAudio(out: string): AudioCaps {
 }
 export const MAC_PRESENCE_ARGV = ["ioreg", "-c", "IOHIDSystem", "-d", "4"];
 export const ANDROID_PRESENCE_SCRIPT =
-  "dumpsys power | grep -E 'mWakefulness=|mLastInteractivePowerHintTime=|mLastWakeTime='; dumpsys window | grep mCurrentFocus";
+  "dumpsys power | grep -E 'mWakefulness=|mLastInteractivePowerHintTime=|mLastWakeTime='; dumpsys window | grep mCurrentFocus; pidof sshd >/dev/null && echo sshd=up || echo sshd=down";
+
+/** Termux sshd state from ANDROID_PRESENCE_SCRIPT output; null when not reported. */
+export function parseAndroidSshd(out: string): boolean | null {
+  const m = /^sshd=(up|down)$/m.exec(out);
+  return m ? m[1] === "up" : null;
+}
+
+/** True when `adb forward --list` already maps tcp:P to tcp:P. */
+export function hasAdbForward(list: string, port: number): boolean {
+  return list.split("\n").some((l) => l.trim().endsWith(`tcp:${port} tcp:${port}`));
+}

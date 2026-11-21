@@ -134,6 +134,8 @@ function hubHarness(devices: DeviceConfig[] = [MAC, PHONE, BOX, DEAF]) {
       stderr: "",
     }),
   };
+  const adbCalls: string[] = [];
+  let forwards = "";
   const opened: MicConfig[] = [];
   const mics: ReturnType<typeof fakeMic>[] = [];
   let lastOutput: PlayerOutput | null = null;
@@ -145,6 +147,12 @@ function hubHarness(devices: DeviceConfig[] = [MAC, PHONE, BOX, DEAF]) {
     run: async (cmd, args) => {
       const joined = [cmd, ...args].join(" ");
       if (cmd === "ioreg") return presence.mac?.() ?? { code: 1, stdout: "", stderr: "" };
+      if (cmd === "adb" && args.includes("forward")) {
+        adbCalls.push(args.join(" "));
+        if (args.includes("--list")) return { code: 0, stdout: forwards, stderr: "" };
+        forwards = "S1 tcp:8022 tcp:8022\n";
+        return { code: 0, stdout: "", stderr: "" };
+      }
       if (cmd === "adb") return presence.phone?.() ?? { code: 1, stdout: "", stderr: "" };
       for (const id of ["box", "deaf"])
         if (joined.includes(` ${id} `))
@@ -191,6 +199,8 @@ function hubHarness(devices: DeviceConfig[] = [MAC, PHONE, BOX, DEAF]) {
     lastOutput: () => lastOutput,
     advance: (ms: number) => void (t += ms),
     pinStore: () => pinStore,
+    adbCalls,
+    dropForward: () => void (forwards = ""),
   };
 }
 
@@ -222,6 +232,34 @@ describe("hub: follow me", () => {
     expect(h.hub.home().id).toBe("box");
     const deaf = h.hub.devices().find((d) => d.id === "deaf");
     expect(deaf).toMatchObject({ online: true, mic: false, speaker: false });
+  });
+
+  test("phone without sshd is skipped; a lost USB forward is restored", async () => {
+    const h = hubHarness([MAC, PHONE]);
+    const awake = "mWakefulness=Awake\nmLastInteractivePowerHintTime=1 (2000 ms ago)\n";
+    h.presence.phone = () => ({ code: 0, stdout: `${awake}sshd=down\n`, stderr: "" });
+    await h.hub.refresh();
+    // Touched most recently, but ssh would be refused: audio stays on the Mac.
+    expect(h.hub.home().id).toBe("mac");
+    expect(h.hub.devices().find((d) => d.id === "phone")).toMatchObject({
+      mic: false,
+      speaker: false,
+    });
+    expect(h.adbCalls).toEqual([]); // no forward work while sshd is down
+
+    h.presence.phone = () => ({ code: 0, stdout: `${awake}sshd=up\n`, stderr: "" });
+    await h.hub.refresh(); // forward missing (cable replugged): restored
+    expect(h.adbCalls).toEqual(["-s S1 forward --list", "-s S1 forward tcp:8022 tcp:8022"]);
+    expect(h.hub.home().id).toBe("phone");
+
+    h.adbCalls.length = 0;
+    await h.hub.refresh(); // still there: only listed
+    expect(h.adbCalls).toEqual(["-s S1 forward --list"]);
+
+    h.dropForward();
+    h.adbCalls.length = 0;
+    await h.hub.refresh();
+    expect(h.adbCalls.at(-1)).toBe("-s S1 forward tcp:8022 tcp:8022");
   });
 
   test("offline devices drop out; with nothing else the local machine stays home", async () => {

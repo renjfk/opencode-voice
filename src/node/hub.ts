@@ -17,6 +17,8 @@ import type {
 import { errorMessage } from "../types.ts";
 import {
   ANDROID_PRESENCE_SCRIPT,
+  hasAdbForward,
+  parseAndroidSshd,
   LINUX_PRESENCE_SCRIPT,
   MAC_PRESENCE_ARGV,
   inputInterruptCount,
@@ -133,6 +135,41 @@ export function createHub(deps: HubDeps): Hub {
   let refreshing: Promise<void> | null = null;
   let playDevice: DeviceConfig = deps.devices[0] as DeviceConfig;
 
+  /** Last state per device + check, so transitions are logged once. */
+  const notes = new Map<string, boolean>();
+  function note(id: string, what: string, ok: boolean, downMsg: string): void {
+    const key = `${id}:${what}`;
+    const prev = notes.get(key);
+    notes.set(key, ok);
+    if (prev === ok) return;
+    if (!ok) log(`${id}: ${downMsg}`, "warn");
+    else if (prev === false) log(`${id}: ${what} ok again`, "info");
+  }
+
+  /**
+   * The USB forward to the phone's sshd vanishes when the cable is replugged
+   * or the adb server restarts; ssh then gets "connection refused". Restore it.
+   */
+  async function keepAdbForward(d: DeviceConfig, serial: string[]): Promise<boolean> {
+    const port = d.adbForwardPort as number;
+    const list = await deps.run("adb", [...serial, "forward", "--list"], PRESENCE_TIMEOUT_MS);
+    if (list.code === 0 && hasAdbForward(list.stdout, port)) {
+      note(d.id, "adb forward", true, "");
+      return true;
+    }
+    const spec = `tcp:${port}`;
+    const r = await deps.run("adb", [...serial, "forward", spec, spec], PRESENCE_TIMEOUT_MS);
+    const ok = r.code === 0;
+    if (ok) log(`${d.id}: restored adb forward ${spec}`, "info");
+    note(
+      d.id,
+      "adb forward",
+      ok,
+      `adb forward ${spec} failed: ${r.stderr.trim() || `exit ${r.code}`}`,
+    );
+    return ok;
+  }
+
   async function probe(d: DeviceConfig): Promise<Presence> {
     try {
       if (d.kind === "local") {
@@ -145,15 +182,19 @@ export function createHub(deps: HubDeps): Hub {
         return { online: true, idleSec: idle ?? Number.POSITIVE_INFINITY };
       }
       if (d.kind === "termux") {
-        // Presence through adb (USB). Reachability of sshd is checked when the mic opens.
-        const args = [
-          ...(d.adb && d.adb !== "auto" ? ["-s", d.adb] : []),
-          "shell",
-          ANDROID_PRESENCE_SCRIPT,
-        ];
-        const r = await deps.run("adb", args, PRESENCE_TIMEOUT_MS);
+        // Presence through adb (USB): screen, focus, and whether sshd runs.
+        const serial = d.adb && d.adb !== "auto" ? ["-s", d.adb] : [];
+        const r = await deps.run(
+          "adb",
+          [...serial, "shell", ANDROID_PRESENCE_SCRIPT],
+          PRESENCE_TIMEOUT_MS,
+        );
         const idle = r.code === 0 ? parseAndroidIdle(r.stdout) : null;
-        return idle === null ? { online: false } : { online: true, idleSec: idle };
+        if (idle === null) return { online: false };
+        let ok = parseAndroidSshd(r.stdout) !== false;
+        note(d.id, "sshd", ok, "Termux sshd not running — skipping the phone until it runs");
+        if (ok && d.adbForwardPort !== undefined) ok = await keepAdbForward(d, serial);
+        return { online: true, idleSec: idle, caps: { mic: ok, speaker: ok } };
       }
       const [cmd, ...args] = sshArgv(deps.ctx, d.ssh ?? d.id, LINUX_PRESENCE_SCRIPT);
       const r = await deps.run(cmd as string, args, PRESENCE_TIMEOUT_MS);
