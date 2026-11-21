@@ -194,6 +194,47 @@ describe("wire", () => {
     p.dispose();
   });
 
+  test("player: the previous clip's final state never overwrites the next clip's position", async () => {
+    // Real network timing: the node sends "end", and its state broadcast for
+    // the finished clip (pos = its end) arrives separately — after the TTS
+    // loop already started the next clip.
+    let plays = 0;
+    const stub = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch: (req, srv) => (srv.upgrade(req) ? undefined : new Response("no", { status: 400 })),
+      websocket: {
+        message(ws, msg) {
+          if (typeof msg === "string") {
+            const op = JSON.parse(msg) as { op: string; id?: number };
+            if (op.op === "play") plays = op.id ?? 0;
+            return;
+          }
+          const id = plays;
+          if (id === 1) {
+            setTimeout(() => {
+              ws.send(JSON.stringify({ t: "end", id, result: "ended" }));
+              setTimeout(
+                () =>
+                  ws.send(JSON.stringify({ t: "state", status: "idle", pos: 2, dur: 2, rate: 1 })),
+                20,
+              );
+            }, 10);
+          }
+        },
+      },
+    });
+    const p = createRemotePlayer(`http://127.0.0.1:${stub.port}`);
+    const wav = wrapPcm(Buffer.alloc(32000 * 2), 16000);
+    await p.play(wav);
+    void p.play(wav); // like the TTS loop: next clip right after "end"
+    await new Promise((r) => setTimeout(r, 60));
+    expect(p.positionSec()).toBeLessThan(1);
+    expect(p.status()).toBe("playing");
+    p.dispose();
+    stub.stop(true);
+  });
+
   test("transcribe and synth over HTTP, synth errors keep their code", async () => {
     const t = createRemoteTranscriber(BASE, () => "m");
     expect(await t.transcribe(wrapPcm(Buffer.alloc(3200), 16000), { language: "vi" })).toBe(

@@ -271,13 +271,59 @@ describe("speed and seeking", () => {
     expect(h.player.seeks.at(-1)).toBe(0); // first part: clamp at 0
   });
 
-  test("forward past the end of a part continues with the next part", async () => {
+  test("position and duration cover the whole reply, not one part", async () => {
     const h = harness();
     h.machine.toggle();
     await flush();
-    h.machine.seekBy(5);
+    h.player.pos = 0.5;
+    expect(h.machine.view()).toMatchObject({
+      positionSec: 0.5,
+      durationSec: 4,
+      durationFinal: true,
+    });
+    h.player.finish(); // part 1 (2 s) done
+    await flush();
+    h.player.pos = 0.5;
+    expect(h.machine.view()).toMatchObject({ positionSec: 2.5, durationSec: 4 });
+  });
+
+  test("duration is marked unfinished while later parts are synthesizing", async () => {
+    let release: () => void = () => {};
+    const h = harness({
+      vieneu: (seg) =>
+        seg.text === "Hello world."
+          ? new Promise((r) => (release = () => r(Buffer.from(`vieneu:${seg.text}`))))
+          : Promise.resolve(Buffer.from(`vieneu:${seg.text}`)),
+    });
+    h.machine.toggle();
+    await flush();
+    expect(h.machine.view()).toMatchObject({ durationSec: 2, durationFinal: false });
+    release();
+    await flush();
+    expect(h.machine.view()).toMatchObject({ durationSec: 4, durationFinal: true });
+  });
+
+  test("forward across a part boundary lands at the right offset in the next part", async () => {
+    const h = harness();
+    h.machine.toggle();
+    await flush();
+    h.player.pos = 1; // 1 s into part 1 → +1.5 s = 0.5 s into part 2
+    h.machine.seekBy(1.5);
     await flush();
     expect(h.player.plays.map(String)).toEqual(["vieneu:Xin chào.", "vieneu:Hello world."]);
+    expect(h.player.seeks.at(-1)).toBe(0.5);
+    expect(h.machine.view().phase).toMatchObject({ kind: "playing", part: 2 });
+  });
+
+  test("forward past the end of the reply finishes it", async () => {
+    const h = harness();
+    h.machine.toggle();
+    await flush();
+    h.player.pos = 1;
+    h.machine.seekBy(5);
+    await flush();
+    expect(h.player.plays.map(String)).toEqual(["vieneu:Xin chào."]);
+    expect(h.machine.view().phase.kind).toBe("idle");
   });
 
   test("rewind past the start of a part jumps back into the previous part", async () => {

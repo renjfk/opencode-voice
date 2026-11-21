@@ -629,6 +629,14 @@ export async function setupPlugin(
         `LLM: ${llm.describe()}`,
         `Auto-submit: ${settings.autoSubmit() ? "on" : "off"}, auto-finish: ${settings.autoEnd() ? "on" : "off"}`,
         `Speech: ${settings.ttsEngine()}${settings.ttsEngine() === "vieneu" ? ` (${settings.vieneuVoice() || "default voice"})` : ""}, speaker ${settings.ttsOutput() === "remote" ? "phone" : "Mac"}, auto-read ${settings.ttsAuto() ? "on" : "off"}, speed ${tts.view().rate}x`,
+        ...(() => {
+          const v = tts.view();
+          return v.phase.kind === "playing" || v.phase.kind === "paused"
+            ? [
+                `Reading: part ${v.phase.part}/${v.phase.parts}, ${v.positionSec.toFixed(1)}s of ${v.durationSec.toFixed(1)}s${v.durationFinal ? "" : " (still synthesizing)"}`,
+              ]
+            : [];
+        })(),
         `Log: ${defaultLogPath()}`,
       ];
       host.alert("Voice status", lines.join("\n"));

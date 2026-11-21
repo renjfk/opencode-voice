@@ -191,12 +191,12 @@ export function ttsSegments(i: StatusInput): Segment[] {
       ];
     case "playing":
     case "paused": {
-      const pos = `${formatClock(i.tts.positionSec * 1000)}/${formatClock(i.tts.durationSec * 1000)}`;
-      const part = phase.parts > 1 ? ` ${phase.part}/${phase.parts}` : "";
+      // Whole-reply time; "+" while later parts are still being synthesized.
+      const pos = `${formatClock(i.tts.positionSec * 1000)}/${formatClock(i.tts.durationSec * 1000)}${i.tts.durationFinal ? "" : "+"}`;
       const eng = i.tts.engine === "piper" ? " piper" : "";
       return [
         txt(
-          `${phase.kind === "paused" ? "⏸" : "♪"} ${pos}${part}${eng}`,
+          `${phase.kind === "paused" ? "⏸" : "♪"} ${pos}${eng}`,
           phase.kind === "paused" ? "warning" : "accent",
         ),
         btn("«5", "tts.back"),

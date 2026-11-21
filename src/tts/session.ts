@@ -1,6 +1,7 @@
 // TTS state machine: prepare text → synthesize part by part (VieNeu, Piper
-// fallback) ahead of playback → play the clips in order. Seeking moves within
-// a clip and across clip boundaries (rewind into the previous part).
+// fallback) ahead of playback → play the clips in order. Position, duration
+// and seeking are on the timeline of the whole reply; parts are an internal
+// detail (logged, and shown in /voice-status).
 // One operation id guards every async step; stop/new speech invalidates the
 // old one so stale audio can never play or clear the status line.
 import type { Host } from "../host.ts";
@@ -20,8 +21,12 @@ export type TtsPhase =
 
 export interface TtsView {
   readonly phase: TtsPhase;
+  /** Position in the whole reply. */
   readonly positionSec: number;
+  /** Duration of the parts synthesized so far. */
   readonly durationSec: number;
+  /** False while later parts are still being synthesized (duration grows). */
+  readonly durationFinal: boolean;
   readonly engine: SynthName | null;
   readonly canReplay: boolean;
   /** Playback speed, e.g. 1.25. */
@@ -202,6 +207,8 @@ export function createTtsMachine(deps: TtsDeps): TtsMachine {
 
   interface Playlist {
     readonly clips: Buffer[];
+    /** Duration of each clip in seconds. */
+    readonly durs: number[];
     /** Expected number of parts while synthesis runs (for the "2/3" label). */
     readonly expected: number;
     finished: boolean;
@@ -222,11 +229,13 @@ export function createTtsMachine(deps: TtsDeps): TtsMachine {
     };
     const pl: Playlist = {
       clips,
+      durs: clips.map((c) => deps.clipDuration(c)),
       expected,
       finished,
       error: null,
       add(wavs) {
         pl.clips.push(...wavs);
+        pl.durs.push(...wavs.map((w) => deps.clipDuration(w)));
         notify();
       },
       done() {
@@ -247,6 +256,12 @@ export function createTtsMachine(deps: TtsDeps): TtsMachine {
     };
     return pl;
   }
+
+  /** Start of clip `idx` on the whole-reply timeline. */
+  const startOf = (list: Playlist, idx: number): number =>
+    list.durs.slice(0, idx).reduce((a, b) => a + b, 0);
+  const totalOf = (list: Playlist): number => startOf(list, list.durs.length);
+  const fmt = (sec: number): string => sec.toFixed(2);
 
   /** Where playback must continue after a seek crossed a clip boundary. */
   let jump: { idx: number; offset: number } | null = null;
@@ -275,6 +290,10 @@ export function createTtsMachine(deps: TtsDeps): TtsMachine {
         if (offset > 0) player.seek(offset);
         if (pausedBefore) player.pause(); // keep a paused session paused across a jump
         setPhase({ kind: pausedBefore ? "paused" : "playing", part: idx + 1, parts });
+        logger.log(
+          "tts",
+          `part ${idx + 1}/${parts} start offset=${fmt(offset)} dur=${fmt(list.durs[idx] ?? 0)} at=${fmt(startOf(list, idx) + offset)}/${fmt(totalOf(list))}${list.finished ? "" : "+"}`,
+        );
         offset = 0;
         const end = await ended;
         if (myOp !== op) return;
@@ -390,24 +409,30 @@ export function createTtsMachine(deps: TtsDeps): TtsMachine {
     seekBy(deltaSec) {
       if ((phase.kind !== "playing" && phase.kind !== "paused") || !current) return false;
       const { list, idx } = current;
-      const target = player.positionSec() + deltaSec;
-      if (target < 0 && idx > 0) {
-        // Rewind into the previous part(s).
-        let back = -target;
-        let i = idx - 1;
-        let dur = deps.clipDuration(list.clips[i] as Buffer);
-        while (back > dur && i > 0) {
-          back -= dur;
-          i -= 1;
-          dur = deps.clipDuration(list.clips[i] as Buffer);
-        }
-        jump = { idx: i, offset: Math.max(0, dur - back) };
-        player.seek(Number.POSITIVE_INFINITY); // ends this clip; the loop jumps
-        return true;
+      const from = startOf(list, idx) + player.positionSec();
+      const total = totalOf(list);
+      const target = Math.max(0, from + deltaSec);
+      // Find the part that holds `target` on the whole-reply timeline.
+      let i = 0;
+      let start = 0;
+      while (i < list.durs.length && target >= start + (list.durs[i] as number)) {
+        start += list.durs[i] as number;
+        i += 1;
       }
-      // Within the clip; past its end the player finishes it and the next
-      // part starts from its beginning.
-      return player.seek(Math.max(0, target));
+      const offset = target - start;
+      logger.log(
+        "tts",
+        `seek ${deltaSec > 0 ? "+" : ""}${deltaSec}s: part ${idx + 1} at=${fmt(from)} → ${i < list.durs.length ? `part ${i + 1} offset=${fmt(offset)}` : list.finished ? "end" : `part ${i + 1} (not synthesized yet) from start`} at=${fmt(Math.min(target, total))}/${fmt(total)}${list.finished ? "" : "+"}`,
+      );
+      if (i === idx) return player.seek(offset);
+      if (i >= list.durs.length && list.finished) {
+        // Past the end of the reply: finish the current part and stop there.
+        jump = { idx: list.durs.length, offset: 0 };
+        return player.seek(Number.POSITIVE_INFINITY);
+      }
+      // Another part (or the next one still being synthesized, from its start).
+      jump = { idx: i, offset: i < list.durs.length ? offset : 0 };
+      return player.seek(Number.POSITIVE_INFINITY); // ends this clip; the loop jumps
     },
     setRate(rate) {
       const r = clampRate(rate);
@@ -424,8 +449,9 @@ export function createTtsMachine(deps: TtsDeps): TtsMachine {
     view() {
       return {
         phase,
-        positionSec: phase.kind === "playing" || phase.kind === "paused" ? player.positionSec() : 0,
-        durationSec: phase.kind === "playing" || phase.kind === "paused" ? player.durationSec() : 0,
+        positionSec: current ? startOf(current.list, current.idx) + player.positionSec() : 0,
+        durationSec: current ? totalOf(current.list) : 0,
+        durationFinal: current ? current.list.finished : true,
         engine,
         canReplay: lastWavs.length > 0,
         rate: player.rate(),

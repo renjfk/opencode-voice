@@ -210,6 +210,9 @@ export function startServer(deps: ServerDeps): { stop(): void; port: number } {
           broadcastState();
         },
       );
+      // Tagged with the play id: the client ignores states sent before this
+      // (they describe the previous clip).
+      ws.send(JSON.stringify({ t: "started", id, state: playerState() }));
       broadcastState();
       return;
     }

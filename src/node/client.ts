@@ -325,8 +325,15 @@ export function createRemotePlayer(base: string, deps: ClientDeps = {}): Player 
       } catch {
         return;
       }
-      const s = (m.t === "ack" ? m.state : m) as typeof m | undefined;
-      if (s && (m.t === "state" || m.t === "ack") && s.status) {
+      if (m.t === "started") {
+        if (m.id !== starting) return;
+        starting = null;
+      } else if (starting !== null) {
+        // Until the node confirms the new clip, its states describe the old one.
+        if (m.t === "state" || m.t === "ack") return;
+      }
+      const s = (m.t === "ack" || m.t === "started" ? m.state : m) as typeof m | undefined;
+      if (s && (m.t === "state" || m.t === "ack" || m.t === "started") && s.status) {
         st = {
           status: s.status,
           pos: s.pos ?? 0,
@@ -346,6 +353,7 @@ export function createRemotePlayer(base: string, deps: ClientDeps = {}): Player 
     };
     sock.onclose = () => {
       if (ws === sock) ws = null;
+      starting = null;
       st = { ...st, status: "idle", at: now() };
       settleAll("stopped");
     };
@@ -359,6 +367,9 @@ export function createRemotePlayer(base: string, deps: ClientDeps = {}): Player 
     else queue.push(m);
   }
 
+  /** Play id sent but not yet confirmed by "started". */
+  let starting: number | null = null;
+
   function position(): number {
     if (st.status !== "playing") return Math.min(st.pos, st.dur || st.pos);
     return Math.min(st.dur, st.pos + ((now() - st.at) / 1000) * st.rate);
@@ -370,6 +381,7 @@ export function createRemotePlayer(base: string, deps: ClientDeps = {}): Player 
       const dur = wavDurationSec(wav);
       if (dur === null) return Promise.reject(new Error("Cannot play: audio is not a valid WAV"));
       const id = nextId++;
+      starting = id;
       st = { ...st, status: "playing", pos: 0, dur, at: now() };
       const p = new Promise<PlayEnd>((resolve, reject) => pending.set(id, { resolve, reject }));
       send(JSON.stringify({ op: "play", id }));

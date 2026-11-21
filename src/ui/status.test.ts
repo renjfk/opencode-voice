@@ -22,6 +22,7 @@ const idleTts: TtsView = {
   phase: { kind: "idle" },
   positionSec: 0,
   durationSec: 0,
+  durationFinal: true,
   engine: null,
   canReplay: false,
   rate: 1,
@@ -123,19 +124,35 @@ describe("status segments", () => {
     ).toContain("Transcribing 0:01");
   });
 
-  test("tts playing shows position, part and controls", () => {
+  test("tts playing shows whole-reply time (no part number) and controls", () => {
+    const tts = {
+      phase: { kind: "playing", part: 2, parts: 3 } as const,
+      positionSec: 5,
+      durationSec: 12,
+      durationFinal: false,
+      engine: null,
+      canReplay: true,
+      rate: 1,
+    };
+    // "+" while later parts are still being synthesized.
+    expect(texts({ ...base, tts })).toContain("♪ 0:05/0:12+ [«5]");
+    expect(texts({ ...base, tts: { ...tts, durationFinal: true } })).toContain("♪ 0:05/0:12 [«5]");
+  });
+
+  test("tts playing shows the piper engine and speed", () => {
     const s = texts({
       ...base,
       tts: {
         phase: { kind: "playing", part: 2, parts: 3 },
         positionSec: 5,
         durationSec: 12,
+        durationFinal: true,
         engine: "piper",
         canReplay: true,
         rate: 1.25,
       },
     });
-    expect(s).toContain("♪ 0:05/0:12 2/3 piper");
+    expect(s).toContain("♪ 0:05/0:12 piper");
     expect(s).toContain("[«5] [⏸] [5»] [1.25x] [■]");
   });
 

@@ -221,6 +221,7 @@ export function fakePlayer(): FakePlayer {
     play(wav) {
       resolve?.("stopped");
       p.plays.push(wav);
+      p.pos = 0; // like the real players: a new clip starts at 0
       status = "playing";
       return new Promise<PlayEnd>((r) => {
         resolve = r;
