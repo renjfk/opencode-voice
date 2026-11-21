@@ -126,6 +126,8 @@ export interface SttMachine {
   toggle(): void;
   /** Fix button: start a correction, or finish it. */
   correct(): void;
+  /** Done button: finish the current recording (even when paused). */
+  finish(): void;
   /** Pause/resume live (streaming) dictation. False when not applicable. */
   pause(): boolean;
   /** Cancel whatever is in flight. False when idle. */
@@ -425,7 +427,6 @@ export function createSttMachine(deps: SttDeps): SttMachine {
       raw = await deps.transcribeFile(deps.transcriber(), wav, {
         language: settings.language(),
         signal: abort?.signal ?? new AbortController().signal,
-        ...(options.sttPrompt ? { prompt: options.sttPrompt } : {}),
       });
     } catch (err) {
       if (myOp !== op) return;
@@ -517,9 +518,10 @@ export function createSttMachine(deps: SttDeps): SttMachine {
   /** Write final text to the field (live span, focused field, or fallback). */
   async function put(text: string, submit: boolean): Promise<string> {
     let field: FocusedTextarea | null = null;
+    const targetGone = !target || target.isDestroyed === true;
     if (span && !span.detached && span.set(text)) {
       field = target;
-    } else if (span && span.detached && span.written) {
+    } else if (span && span.detached && span.written && !targetGone) {
       // User edited during dictation: their text and the live words stay.
       host.toast(
         "You edited the text during dictation — kept the live transcript as is",
@@ -527,24 +529,24 @@ export function createSttMachine(deps: SttDeps): SttMachine {
       );
       return "Kept live text";
     } else {
+      // No live span, or the field it wrote into is gone (navigated away).
       field = host.focused();
       if (field) insertAtCursor(field, text);
     }
     if (field) {
       if (submit) {
-        field.submit();
-        return "Sent";
+        return field.submit() === false ? "Inserted (submit refused — press Enter)" : "Sent";
       }
       return `Inserted ${text.length} chars`;
     }
     if (submit) {
-      try {
-        await host.promptSession(text);
-        return "Sent";
-      } catch (err) {
+      // A prompt call can resolve only when the agent finishes: send in the
+      // background so dictation (and auto-read) are free right away.
+      void host.promptSession(text).catch((err: unknown) => {
         host.alert("Voice transcript — not sent", text);
-        return `Not sent: ${errorMessage(err)}`;
-      }
+        host.toast(`Not sent: ${errorMessage(err)}`, "error", 6000);
+      });
+      return "Sent";
     }
     host.alert("Voice transcript — no text field focused", text);
     return "No text field focused — transcript shown in a dialog";
@@ -647,6 +649,9 @@ export function createSttMachine(deps: SttDeps): SttMachine {
         return;
       }
       host.toast("Finish the current recording first, then press Fix", "info", 2500);
+    },
+    finish() {
+      if (phase.kind === "recording" || phase.kind === "live") finish();
     },
     pause() {
       if (phase.kind !== "live" || !stream || finishing) return false;

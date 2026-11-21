@@ -178,7 +178,10 @@ export function createTtsMachine(deps: TtsDeps): TtsMachine {
           wavs.push(wav);
           setPhase({ kind: "playing", part: i + 1, parts: segs.length });
           const end = await player.play(wav);
-          if (myOp !== op || end === "stopped") return;
+          if (myOp !== op || end === "stopped") {
+            lastWavs = wavs; // what was heard so far stays replayable
+            return;
+          }
         }
       }
     } catch (err) {
@@ -221,11 +224,23 @@ export function createTtsMachine(deps: TtsDeps): TtsMachine {
 
   // Auto-read: only the TUI showing that session speaks, once per reply
   // (the dedupe key lives in shared storage, so other TUIs skip it).
-  host.onSessionIdle((sessionID) => {
+  const retried = new Set<string>();
+  function autoRead(sessionID: string, isRetry = false): void {
     if (disposed || !settings.ttsAuto()) return;
+    if (isRetry && !host.lastAssistantText(sessionID)) return;
     if (host.currentSessionID() !== sessionID) return;
     const text = host.lastAssistantText(sessionID);
-    if (!text) return;
+    if (!text) {
+      // The final message can reach the store after the idle event.
+      if (!retried.has(sessionID)) {
+        retried.add(sessionID);
+        setTimeout(() => {
+          retried.delete(sessionID);
+          autoRead(sessionID, true);
+        }, 1500).unref?.();
+      }
+      return;
+    }
     const key = `${sessionID}:${text.length}:${hash(text)}`;
     if (host.kv.get("tts.lastSpoken") === key) return;
     logger.log("tts", `auto-read session reply chars=${text.length}`);
@@ -235,7 +250,8 @@ export function createTtsMachine(deps: TtsDeps): TtsMachine {
       return;
     }
     speak(text, true);
-  });
+  }
+  host.onSessionIdle((sessionID) => autoRead(sessionID));
 
   return {
     toggle() {

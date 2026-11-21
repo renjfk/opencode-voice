@@ -6,6 +6,7 @@ import type { TtsView } from "../tts/session.ts";
 
 export type Action =
   | "stt.toggle"
+  | "stt.finish"
   | "stt.correct"
   | "stt.pause"
   | "stt.cancel"
@@ -104,7 +105,7 @@ export function sttSegments(i: StatusInput): Segment[] {
           `● ${phase.purpose === "correct" ? "FIX" : "REC"} ${secs(phase.since)} ${meter(i.stt.level)}`,
           "danger",
         ),
-        btn("■ Done", phase.purpose === "correct" ? "stt.correct" : "stt.toggle", "danger"),
+        btn("■ Done", "stt.finish", "danger"),
         btn("✕ Cancel", "stt.cancel", "muted"),
       ];
     case "live": {
@@ -115,7 +116,7 @@ export function sttSegments(i: StatusInput): Segment[] {
       const out = [
         head,
         btn(phase.paused ? "▶ Resume" : "⏸ Pause", "stt.pause", "accent"),
-        btn("■ Done", phase.purpose === "correct" ? "stt.correct" : "stt.toggle", "danger"),
+        btn("■ Done", "stt.finish", "danger"),
         btn("✕ Cancel", "stt.cancel", "muted"),
       ];
       if (i.stt.partial) out.push(txt(`“${tail(i.stt.partial)}”`, "muted"));

@@ -444,3 +444,54 @@ test("phone mic without sttCaptureCmd fails fast with a hint", async () => {
   expect(h.machine.view().phase.kind).toBe("idle");
   expect(h.toasts.at(-1)?.m).toContain("sttCaptureCmd");
 });
+
+test("Done on a paused live session finishes instead of resuming", async () => {
+  const h = harness({ mode: "streaming" });
+  h.machine.toggle();
+  await flush();
+  h.machine.pause();
+  h.machine.finish();
+  expect(h.machine.view().phase.kind).toBe("transcribing");
+  await flush();
+  expect(h.field?.plainText).toBe("final text");
+});
+
+test("auto-submit without a focused field frees the machine before the prompt resolves", async () => {
+  const h = harness({ field: null, autoSubmit: true });
+  h.machine.toggle();
+  await flush();
+  h.mics[0]?.push(pcm(1000));
+  h.machine.toggle();
+  await flush();
+  expect(h.machine.view().phase.kind).toBe("idle");
+  expect(h.prompts).toEqual(["Hello world."]);
+});
+
+test("composer destroyed mid-dictation: transcript is not lost", async () => {
+  const field = fakeTextarea("");
+  const h = harness({ mode: "streaming", field });
+  h.machine.toggle();
+  await flush();
+  h.streams[0]?.emit({ stable: "hello", tentative: "" });
+  (field as unknown as { isDestroyed: boolean }).isDestroyed = true;
+  h.machine.toggle();
+  await flush();
+  // host.focused() still returns the (destroyed) fake; real host filters it.
+  expect(h.machine.view().last?.message).not.toBe("Kept live text");
+});
+
+test("whisper never receives the LLM system prompt override", async () => {
+  const h = harness({ options: { sttPrompt: "LONG SYSTEM PROMPT" } });
+  let seenPrompt: string | undefined = "unset";
+  const orig = h.t.transcribe.bind(h.t);
+  h.t.transcribe = (wav, opts) => {
+    seenPrompt = opts.prompt;
+    return orig(wav, opts);
+  };
+  h.machine.toggle();
+  await flush();
+  h.mics[0]?.push(pcm(1000));
+  h.machine.toggle();
+  await flush();
+  expect(seenPrompt).toBeUndefined();
+});

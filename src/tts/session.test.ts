@@ -221,3 +221,24 @@ test("needsLlmSpeech only flags code, markup, paths and links", () => {
   expect(needsLlmSpeech("See https://example.com")).toBe(true);
   expect(needsLlmSpeech("| a | b |")).toBe(true);
 });
+
+test("stopping mid-reply keeps the heard parts replayable", async () => {
+  const h = harness();
+  h.machine.toggle();
+  await flush();
+  h.machine.stop();
+  await flush();
+  expect(h.machine.view().canReplay).toBe(true);
+});
+
+test("auto-read retries once when the reply text lands after the idle event", async () => {
+  const h = harness({ reply: "" });
+  h.settings.setTtsAuto(true);
+  h.fireIdle();
+  await flush();
+  expect(h.player.plays.length).toBe(0);
+  h.setReply("Late reply.");
+  await new Promise((r) => setTimeout(r, 1600));
+  await flush();
+  expect(h.player.plays.length).toBe(1);
+});

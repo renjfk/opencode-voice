@@ -177,8 +177,9 @@ export async function setupPlugin(
       cleanOutput: cleanNormalizerOutput,
     },
     onRecordingStart: () => {
-      // The mic must not hear the reply being read.
-      if (tts.view().phase.kind === "playing") tts.pause();
+      // The mic must not hear the reply being read: pause it, or stop it when
+      // it is still preparing / between parts (nothing to pause yet).
+      if (tts.isBusy() && !tts.pause()) tts.stop();
     },
   });
   const sttM = stt;
@@ -381,6 +382,8 @@ export async function setupPlugin(
     switch (a) {
       case "stt.toggle":
         return actions.sttToggle();
+      case "stt.finish":
+        return sttM.finish();
       case "stt.correct":
         return actions.sttCorrect();
       case "stt.pause":

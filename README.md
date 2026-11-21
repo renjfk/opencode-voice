@@ -29,24 +29,28 @@ Prerequisites (macOS): `brew install sox whisper-cpp`, a ggml whisper model in
 speech: Piper on `PATH` with voices in `~/.local/share/piper-voices/`, plus an
 optional VieNeu-TTS Python venv. See [docs/technical.md](docs/technical.md).
 
-Add to `~/.config/opencode/tui.jsonc` (or `cli.json` → `plugins`):
+Add to `~/.config/opencode/cli.json` (OpenCode v2 reads plugins only from
+`cli.json` → `plugins`; entries in `tui.jsonc` are ignored):
 
-```jsonc
+```json
 {
-  "plugin": [
-    [
-      "@bojackduy/opencode-voice",
-      {
+  "plugins": [
+    {
+      "package": "@bojackduy/opencode-voice",
+      "options": {
         "sttMode": "streaming",
         "sttAutoSubmit": false,
         "ttsEngine": "vieneu",
         "ttsVieneuPython": "~/.local/share/opencode-voice/vieneu-venv/bin/python",
-        "ttsVieneuVoice": "Mai Anh",
-      },
-    ],
-  ],
+        "ttsVieneuVoice": "Mai Anh"
+      }
+    }
+  ]
 }
 ```
+
+For a local checkout use `"package": "file:/path/to/opencode-voice"`. Restart
+OpenCode after changing the config.
 
 The clean-up / Fix LLM defaults to the session's current model; pick another
 with `/voice-model`, or set `endpoint` + `model` + `apiKeyEnv` explicitly.

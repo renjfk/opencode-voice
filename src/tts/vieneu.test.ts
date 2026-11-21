@@ -46,6 +46,9 @@ function harness(over: Partial<VieneuOptions> = {}) {
   const logs: string[] = [];
   let voice = "Mai Anh";
   const state = {
+    /** Cross-process start lock: true = another process holds it. */
+    lockedByOther: false,
+    locks: 0,
     /** Called on every spawn; default: the sidecar becomes healthy at once. */
     onSpawn: (_child: FakeChild, port: number): void => {
       ports.set(port, "vieneu");
@@ -74,6 +77,13 @@ function harness(over: Partial<VieneuOptions> = {}) {
         };
       },
       workDir: () => "/tmp/private-vieneu",
+      acquireStartLock: () => {
+        if (state.lockedByOther) return null;
+        state.locks += 1;
+        return () => {
+          state.locks -= 1;
+        };
+      },
       spawn: (cmd, args, opts) => {
         const child = new FakeChild();
         spawns.push({ cmd, args, opts, child });
@@ -284,10 +294,18 @@ describe("createVieneuSynth", () => {
     expect(h.scheduled.filter((s) => s.ms === 120_000).length).toBe(1);
     expect((await rejection(h.synth.synthesize(h.seg))).code).toBe("UNAVAILABLE");
     expect(h.spawns.length).toBe(2);
-    // After the renewed cooldown a foreground start is attempted again.
+    // After the renewed cooldown the call does not wait: it falls back at
+    // once (UNAVAILABLE) and the start is retried in the background.
     h.advance(120_000);
-    await rejection(h.synth.synthesize(h.seg));
+    expect((await rejection(h.synth.synthesize(h.seg))).code).toBe("UNAVAILABLE");
+    for (let i = 0; i < 5; i++) await tick();
     expect(h.spawns.length).toBe(3);
+    // Once a retry succeeds, VieNeu is used again.
+    h.state.onSpawn = (_c, port) => void h.ports.set(port, "vieneu");
+    h.advance(120_000);
+    await rejection(h.synth.synthesize(h.seg)); // kicks off the retry
+    for (let i = 0; i < 5; i++) await tick();
+    expect((await h.synth.synthesize(h.seg)).length).toBeGreaterThan(0);
   });
 
   test("start times out after 180s and the process is killed", async () => {
@@ -618,5 +636,60 @@ assert m.server_address() == ("127.0.0.1", 8003)
 `);
     expect(r.stderr).toBe("");
     expect(r.status).toBe(0);
+  });
+});
+
+describe("cross-process start lock", () => {
+  test("waits for another OpenCode's VieNeu and shares it instead of spawning", async () => {
+    const h = harness();
+    h.state.lockedByOther = true;
+    const p = h.synth.synthesize(h.seg);
+    await tick();
+    await tick();
+    expect(h.spawns.length).toBe(0);
+    h.ports.set(8000, "vieneu"); // the other process's server becomes healthy
+    expect((await p).length).toBeGreaterThan(0);
+    expect(h.spawns.length).toBe(0);
+    expect(h.logs.some((l) => l.includes("waiting to share"))).toBe(true);
+    expect(h.logs.some((l) => l.includes("adopted existing sidecar on port 8000"))).toBe(true);
+  });
+
+  test("spawns once the other process gave up and released the lock", async () => {
+    const h = harness();
+    h.state.lockedByOther = true;
+    const p = h.synth.synthesize(h.seg);
+    await tick();
+    h.state.lockedByOther = false;
+    await p;
+    expect(h.spawns.length).toBe(1);
+    expect(h.state.locks).toBe(0); // released after start
+  });
+
+  test("lock is released when the spawn fails", async () => {
+    const h = harness();
+    h.state.onSpawn = (child) => setImmediate(() => child.exit(1));
+    await rejection(h.synth.synthesize(h.seg));
+    expect(h.state.locks).toBe(0);
+  });
+});
+
+describe("fileStartLock", () => {
+  test("second acquire is refused while held, then allowed after release", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const { fileStartLock } = await import("./vieneu.ts");
+    const file = path.join(mkdtempSync(path.join(os.tmpdir(), "ocv-lock-")), "start.lock");
+    const acquire = fileStartLock(file);
+    const release = acquire();
+    expect(release).not.toBeNull();
+    // Same pid counts as stale (a crashed earlier start in this process).
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(file, JSON.stringify({ pid: process.ppid, at: Date.now() }));
+    expect(acquire()).toBeNull(); // live other process (our parent) holds it
+    writeFileSync(file, JSON.stringify({ pid: 999999, at: Date.now() }));
+    const again = acquire(); // dead pid: stale, stolen
+    expect(again).not.toBeNull();
+    again?.();
   });
 });

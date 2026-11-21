@@ -93,6 +93,64 @@ export interface VieneuDeps {
   schedule(fn: () => void, ms: number): () => void;
   /** Private, empty working directory for the sidecar process. */
   workDir(): string;
+  /**
+   * Cross-process start lock: only one OpenCode instance spawns VieNeu at a
+   * time; the others wait and share its server. Returns a release function,
+   * or null while another live process holds the lock.
+   */
+  acquireStartLock(): (() => void) | null;
+}
+
+const LOCK_STALE_MS = 200_000;
+
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+export function fileStartLock(
+  file: string,
+  now: () => number = Date.now,
+): () => (() => void) | null {
+  return () => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const fd = fs.openSync(file, "wx", 0o600);
+        fs.writeSync(fd, JSON.stringify({ pid: process.pid, at: now() }));
+        fs.closeSync(fd);
+        return () => {
+          try {
+            const held = JSON.parse(fs.readFileSync(file, "utf8")) as { pid?: unknown };
+            if (held.pid === process.pid) fs.unlinkSync(file);
+          } catch {
+            // already gone
+          }
+        };
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "EEXIST") return () => {};
+        let holder: { pid?: unknown; at?: unknown } = {};
+        try {
+          holder = JSON.parse(fs.readFileSync(file, "utf8")) as typeof holder;
+        } catch {
+          // unreadable: treat as stale
+        }
+        const pid = typeof holder.pid === "number" ? holder.pid : 0;
+        const at = typeof holder.at === "number" ? holder.at : 0;
+        const live = pid > 0 && pid !== process.pid && pidAlive(pid) && now() - at < LOCK_STALE_MS;
+        if (live) return null;
+        try {
+          fs.unlinkSync(file);
+        } catch {
+          // raced with another remover
+        }
+      }
+    }
+    return null;
+  };
 }
 
 function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -123,12 +181,15 @@ const defaultDeps: VieneuDeps = {
     timer.unref?.();
     return () => clearTimeout(timer);
   },
-  workDir: () => {
-    const dir = path.join(os.tmpdir(), "opencode-voice-vieneu");
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    return dir;
-  },
+  workDir: defaultWorkDir,
+  acquireStartLock: () => fileStartLock(path.join(defaultWorkDir(), "start.lock"))(),
 };
+
+function defaultWorkDir(): string {
+  const dir = path.join(os.tmpdir(), "opencode-voice-vieneu");
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  return dir;
+}
 
 // ---------------------------------------------------------------- options
 
@@ -381,8 +442,47 @@ export function createVieneuSynth(opts: VieneuOptions): VieneuSynth {
     }
   }
 
+  async function findShared(): Promise<number | null> {
+    for (let i = 0; i < portScanMax; i++) {
+      if ((await probe(basePort + i)) === "vieneu") return basePort + i;
+    }
+    return null;
+  }
+
   async function start(): Promise<Server> {
     const deadline = deps.now() + startTimeoutMs;
+    let waiting = false;
+    for (;;) {
+      const shared = await findShared();
+      if (disposed) throw new StartFailure("stopped");
+      if (shared !== null) {
+        log(`VieNeu adopted existing sidecar on port ${shared}`, "info");
+        return { port: shared, proc: null };
+      }
+      const release = deps.acquireStartLock();
+      if (release) {
+        try {
+          return await spawnScan(deadline);
+        } finally {
+          release();
+        }
+      }
+      // Another OpenCode is starting VieNeu: share it instead of spawning a
+      // second copy (each one loads the model into memory).
+      if (!waiting) log("another OpenCode is starting VieNeu — waiting to share it", "info");
+      waiting = true;
+      if (deps.now() >= deadline) {
+        throw new StartFailure("another OpenCode is still starting VieNeu");
+      }
+      try {
+        await deps.sleep(pollMs, lifetime.signal);
+      } catch {
+        // disposed; handled at the top of the loop
+      }
+    }
+  }
+
+  async function spawnScan(deadline: number): Promise<Server> {
     for (let i = 0; i < portScanMax; i++) {
       const port = basePort + i;
       const state = await probe(port);
@@ -514,6 +614,12 @@ export function createVieneuSynth(opts: VieneuOptions): VieneuSynth {
       // Fail fast during the cooldown and while the background retry runs,
       // so speech falls back to Piper instead of waiting on a slow start.
       if (failure && (deps.now() < failure.until || starting)) throw unavailable(failure.reason);
+      if (failure && !server) {
+        // It failed before: retry in the background so this reply is read by
+        // Piper now instead of waiting up to the whole start timeout again.
+        ensureServer(true).catch(() => {});
+        throw unavailable(failure.reason);
+      }
       const s = await abortable(ensureServer(), signal);
       return request(s, seg.text, signal);
     },
