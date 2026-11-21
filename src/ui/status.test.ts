@@ -30,6 +30,7 @@ const base: StatusInput = {
   stt: idleStt,
   tts: idleTts,
   autoSubmit: true,
+  autoEnd: false,
   sttMode: "streaming",
   sttEngine: "turbo",
   ttsAuto: false,
@@ -43,8 +44,16 @@ const texts = (i: StatusInput) =>
 describe("status segments", () => {
   test("idle shows the main buttons", () => {
     expect(texts(base)).toBe(
-      "[● Speak] [✎ Fix] [⏎ Auto ✓] [Live] [turbo] │ [▶ Reply] [1x] [Read ✗]",
+      "[● Speak] [✎ Fix] [⏹ Auto-stop ✗] [⏎ Auto-send ✓] [Live] [turbo] │ [▶ Reply] [1x] [Read ✗]",
     );
+  });
+
+  test("auto-stop button reflects the setting and toggles it", () => {
+    const seg = statusSegments({ ...base, autoEnd: true }).find((s) =>
+      s.text.includes("Auto-stop"),
+    );
+    expect(seg?.text).toBe("[⏹ Auto-stop ✓]");
+    expect(seg?.action).toBe("stt.autoEnd");
   });
 
   test("recording shows timer, meter, done and cancel", () => {

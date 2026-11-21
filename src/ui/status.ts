@@ -11,6 +11,7 @@ export type Action =
   | "stt.pause"
   | "stt.cancel"
   | "stt.autoSubmit"
+  | "stt.autoEnd"
   | "stt.mode"
   | "stt.engine"
   | "voice.device"
@@ -35,6 +36,8 @@ export interface StatusInput {
   readonly stt: SttView;
   readonly tts: TtsView;
   readonly autoSubmit: boolean;
+  /** Finish dictation after 2.5 s of silence. */
+  readonly autoEnd: boolean;
   readonly sttMode: "batch" | "streaming";
   /** Short transcription engine label, e.g. "turbo" or "API". */
   readonly sttEngine: string;
@@ -99,7 +102,14 @@ export function sttSegments(i: StatusInput): Segment[] {
       out.push(btn("✎ Fix", "stt.correct"));
       out.push(
         btn(
-          i.autoSubmit ? "⏎ Auto ✓" : "⏎ Auto ✗",
+          i.autoEnd ? "⏹ Auto-stop ✓" : "⏹ Auto-stop ✗",
+          "stt.autoEnd",
+          i.autoEnd ? "success" : "muted",
+        ),
+      );
+      out.push(
+        btn(
+          i.autoSubmit ? "⏎ Auto-send ✓" : "⏎ Auto-send ✗",
           "stt.autoSubmit",
           i.autoSubmit ? "success" : "muted",
         ),

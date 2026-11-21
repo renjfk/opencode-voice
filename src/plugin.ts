@@ -333,6 +333,7 @@ export async function setupPlugin(
   const toggleAutoSubmit = (): void => {
     const next = !settings.autoSubmit();
     settings.setAutoSubmit(next);
+    status?.refresh();
     host.toast(
       next
         ? "Auto-submit on: dictation is sent right away"
@@ -394,6 +395,7 @@ export async function setupPlugin(
     toggleAutoEnd: () => {
       const next = !settings.autoEnd();
       settings.setAutoEnd(next);
+      status?.refresh();
       host.toast(
         next ? "Auto-finish on: 2.5s of silence finishes dictation" : "Auto-finish off",
         "info",
@@ -657,9 +659,11 @@ export async function setupPlugin(
       case "stt.cancel":
         void sttM.cancel();
         return;
+      case "stt.autoEnd":
+        actions.toggleAutoEnd();
+        return;
       case "stt.autoSubmit":
         toggleAutoSubmit();
-        status?.refresh();
         return;
       case "stt.mode": {
         const next = settings.sttMode() === "streaming" ? "batch" : "streaming";
@@ -707,6 +711,7 @@ export async function setupPlugin(
         stt: sttM.view(),
         tts: tts.view(),
         autoSubmit: settings.autoSubmit(),
+        autoEnd: settings.autoEnd(),
         sttMode: settings.sttMode(),
         sttEngine: sttEngineLabel(),
         audioDevice:

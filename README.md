@@ -19,7 +19,7 @@
 
 ```
 ● LIVE 0:07 ▃▅▄ [⏸ Pause] [■ Done] [✕ Cancel] │ ♪ 0:05/0:12 [«5] [⏸] [5»] [1.25x] [■]
-[● Speak] [✎ Fix] [⏎ Auto ✓] [Live] [turbo] │ [▶ Reply] [↺] [1x] [Read ✓]
+[● Speak] [✎ Fix] [⏹ Auto-stop ✓] [⏎ Auto-send ✓] [Live] [turbo] │ [▶ Reply] [↺] [1x] [Read ✓]
 ```
 
 ## Install
