@@ -273,6 +273,7 @@ For unauthenticated local endpoints (e.g. Ollama):
 - `model` _(required)_ - model name sent to `/chat/completions`
 - `apiKeyEnv` _(optional)_ - environment variable containing the API key
 - `maxTokens` _(optional)_ - maximum completion tokens for normalization calls
+- `normalize` _(optional)_ - set `false` to skip LLM normalization and use whisper's raw transcription as-is. Can also be toggled at runtime via `/stt-normalize`
 - `reasoningEffort` _(optional)_ - reasoning level for models that support it
 - `chatTemplateKwargs` _(optional)_ - extra keyword arguments passed to the model's chat template (e.g. `{"enable_thinking": false}` for Qwen models to disable chain-of-thought)
 - `retries` _(optional)_ - number of retry attempts for transient LLM failures
