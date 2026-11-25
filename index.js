@@ -32,8 +32,10 @@
 //   - V2 2.2 has no API to write the composer text (the V1
 //     `client.tui.appendPrompt` producer was removed; `tui.prompt.append` has a
 //     consumer but no producer). /stt-submit sends the transcript directly;
-//     /stt-record opens an editable review dialog (`context.ui.dialog.prompt`)
-//     prefilled with the text: the user reviews/edits and Enter sends it.
+//     /stt-record opens an editable review dialog prefilled with the text:
+//     the user reviews/edits and Enter sends it. The review dialog is a
+//     custom transcript-sized dialog (lib/review-dialog.jsx) because the
+//     built-in prompt renders a single-line editor at a fixed medium width.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -154,6 +156,27 @@ function createEvent(context) {
   };
 }
 
+// Open the transcript review dialog. Prefers the transcript-sized custom
+// dialog (lib/review-dialog.jsx), loaded lazily so an unexpected runtime —
+// no JSX transform, missing custom-dialog API — degrades to the built-in
+// prompt dialog instead of failing the whole plugin.
+let openReviewDialogModule;
+async function reviewDialog(context, options) {
+  if (openReviewDialogModule === undefined) {
+    openReviewDialogModule = await import("./lib/review-dialog.jsx")
+      .then((module) => module.openReviewDialog)
+      .catch(() => null);
+  }
+  if (openReviewDialogModule && typeof context.ui.dialog.show === "function") {
+    return openReviewDialogModule(context, options);
+  }
+  return context.ui.dialog.prompt({
+    title: options.title,
+    description: options.description,
+    value: options.value,
+  });
+}
+
 // The V1-era api surface the command modules are written against, adapted to
 // the V2 plugin context. Exported for tests.
 export function createApi(context, kv) {
@@ -198,7 +221,9 @@ export function createApi(context, kv) {
       // event it used has a consumer but no producer). Voice input therefore
       // either sends directly (/stt-submit) or opens an editable review dialog
       // prefilled with the transcript (/stt-record): the user reviews/edits
-      // and Enter sends it to the session.
+      // and Enter sends it to the session. The review dialog is the
+      // transcript-sized custom dialog from lib/review-dialog.jsx, with the
+      // built-in prompt as a fallback.
       async deliverTranscription(text, submit = false) {
         const route = context.ui.router.current();
         if (route.type !== "session") {
@@ -215,7 +240,7 @@ export function createApi(context, kv) {
         }
         let finalText = draft;
         if (!submit) {
-          const edited = await context.ui.dialog.prompt({
+          const edited = await reviewDialog(context, {
             title: "Voice prompt",
             description: "Review and edit, then Enter to send (Esc to cancel)",
             value: draft,
