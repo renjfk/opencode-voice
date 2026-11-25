@@ -119,7 +119,6 @@ test("builds whisper-cli args with language", () => {
     "-l",
     "zh",
     "-np",
-    "-nt",
   ]);
   assert.deepEqual(buildWhisperArgs("/models/ggml.bin", "/tmp/a.wav", null), [
     "-m",
@@ -129,6 +128,5 @@ test("builds whisper-cli args with language", () => {
     "-l",
     "auto",
     "-np",
-    "-nt",
   ]);
 });
